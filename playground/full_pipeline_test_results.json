@@ -1,0 +1,131 @@
+{
+  "test_info": {
+    "test_name": "Full Pipeline Test (Jupyter Compatible)",
+    "source_file": "c:\\Users\\dmitr\\Projects\\KG-Sentiment\\data\\raw\\donald_trump\\speeches\\2025\\09\\23\\speech_un_091500.json",
+    "timestamp": "2025-10-04T13:58:31Z"
+  },
+  "input_data": {
+    "original_transcript_length": 46930,
+    "original_tokens": 10056,
+    "original_words": 8326
+  },
+  "summarization": {
+    "target_words": 3750,
+    "summary_length": 21263,
+    "summary_tokens": 4399,
+    "summary_words": 3734,
+    "compression_ratio": 0.45307905391007885,
+    "processing_time": 7.9481964111328125
+  },
+  "categorization_results": {
+    "categories": [
+      {
+        "category": "foreign_relations",
+        "entities": [
+          {
+            "entity_name": "United Nations",
+            "entity_type": "other",
+            "sentiment": "negative",
+            "context": "Criticism of the United Nations for not assisting in international negotiations and conflicts.",
+            "quotes": [
+              "It's too bad that I had to do these things instead of the United Nations doing them.",
+              "And sadly, in all cases, the United Nations did not even try to help in any of them.",
+              "All I got from the United Nations was an escalator that, on the way up, stopped right in the middle."
+            ]
+          },
+          {
+            "entity_name": "Saudi Arabia",
+            "entity_type": "country",
+            "sentiment": "positive",
+            "context": "Mentioned as a valued partner in rebuilding relationships in the Gulf.",
+            "quotes": [
+              "those valued relationships with Saudi Arabia, Qatar and the UAE and other countries are now, I believe, closer than ever before."
+            ]
+          },
+          {
+            "entity_name": "Qatar",
+            "entity_type": "country",
+            "sentiment": "positive",
+            "context": "Mentioned as a valued partner in rebuilding relationships in the Gulf.",
+            "quotes": [
+              "those valued relationships with Saudi Arabia, Qatar and the UAE and other countries are now, I believe, closer than ever before."
+            ]
+          },
+          {
+            "entity_name": "UAE",
+            "entity_type": "country",
+            "sentiment": "positive",
+            "context": "Mentioned as a valued partner in rebuilding relationships in the Gulf.",
+            "quotes": [
+              "those valued relationships with Saudi Arabia, Qatar and the UAE and other countries are now, I believe, closer than ever before."
+            ]
+          },
+          {
+            "entity_name": "Israel",
+            "entity_type": "country",
+            "sentiment": "neutral",
+            "context": "Mentioned in the context of historical conflicts.",
+            "quotes": [
+              "Israel and Iran"
+            ]
+          },
+          {
+            "entity_name": "Iran",
+            "entity_type": "country",
+            "sentiment": "neutral",
+            "context": "Mentioned in the context of historical conflicts.",
+            "quotes": [
+              "Israel and Iran"
+            ]
+          },
+          {
+            "entity_name": "Abraham Accords",
+            "entity_type": "policy_tool",
+            "sentiment": "positive",
+            "context": "Mentioned as a significant achievement in foreign relations.",
+            "quotes": [
+              "Now after ending all these wars and also earlier negotiating the Abraham Accords -- which is a very big thing for which our country received no credit, never receives credit."
+            ]
+          }
+        ]
+      },
+      {
+        "category": "economic_policy",
+        "entities": [
+          {
+            "entity_name": "Joe Biden",
+            "entity_type": "person",
+            "sentiment": "negative",
+            "context": "Criticism of the previous administration's economic performance.",
+            "quotes": [
+              "In four years of President Biden, we had less than $1 trillion of new investment into the United States."
+            ]
+          },
+          {
+            "entity_name": "America",
+            "entity_type": "country",
+            "sentiment": "positive",
+            "context": "Describing the current state of the economy and national strength.",
+            "quotes": [
+              "America is blessed with the strongest economy, the strongest borders, the strongest military, the strongest friendships and the strongest spirit of any nation on the face of the earth."
+            ]
+          }
+        ]
+      }
+    ],
+    "metadata": {
+      "model_used": "gpt-4o-mini",
+      "id": "b2c3d4e5-f6g7-8901-bcde-f23456789012",
+      "categorization_date": "2025-09-23",
+      "speakers": [
+        "Donald Trump"
+      ]
+    }
+  },
+  "performance": {
+    "total_processing_time": 19.476077795028687,
+    "summarization_time": 7.9481964111328125,
+    "categorization_time": 11.527881383895874
+  },
+  "summary_text": "Thank you very much for being here, and Madam President, Mr. Secretary General, First Lady of the United States, distinguished delegates, ambassadors and world leaders. Six years have passed since I last stood in this grand hall and addressed a world that was prosperous and at peace in my first term. And here in the United States, four years of weakness, lawlessness and radicalism under the last administration delivered our nation into a repeated set of disasters. But today, just eight months into my administration, we are the hottest country anywhere in the world. America is blessed with the strongest economy, the strongest borders, the strongest military, the strongest friendships and the strongest spirit of any nation on the face of the earth. We are rapidly reversing the economic calamity that we inherited from the previous administration, including ruinous price increases and record setting inflation, inflation like we've never had before. Under my leadership, energy costs are dow..."
+}

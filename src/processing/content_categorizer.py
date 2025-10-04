@@ -1,16 +1,22 @@
+from typing import Dict, List, Any
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.runnables import RunnablePassthrough
+from pydantic import BaseModel, Field
 import json
-import os
-from typing import Dict, List, Optional, Any
-import openai
-from openai import OpenAI
-import sys
 
 from src.config import config
+from src.schemas import (
+    PolicyDomain, EntityType, SentimentLevel, 
+    EntityMention, CategoryWithEntities, CategorizationOutput
+)
+from src.utils.logging_utils import get_logger
 
 
 class ContentCategorizer:
     """
-    Categorizes content to extract categories, entities, and direct quotes.
+    ContentCategorizer implementation using LangChain for structured output parsing.
     
     This class handles the categorization of speech/communication data for the
     knowledge graph platform, creating a hierarchical structure of categories
@@ -18,27 +24,95 @@ class ContentCategorizer:
     """
     
     def __init__(self):
-        self.api_key = config.OPENAI_API_KEY
-        if not self.api_key:
-            raise ValueError("OpenAI API key not found. Set OPENAI_API_KEY environment variable.")
+        self.logger = get_logger("content_categorizer", "content_categorizer.log")
         
-        self.client = OpenAI(api_key=self.api_key)
-        self.model = config.OPENAI_MODEL
+        llm_kwargs = {
+            "model": config.OPENAI_MODEL,
+            "temperature": config.OPENAI_TEMPERATURE,
+            "max_tokens": config.OPENAI_MAX_TOKENS,
+            "api_key": config.OPENAI_API_KEY
+        }
+        
+        self.llm = ChatOpenAI(**llm_kwargs)
+        
+        self.logger.info(f"ContentCategorizer initialized with model: {config.OPENAI_MODEL}")
+        
+        # Create output parser for structured results
+        self.output_parser = PydanticOutputParser(pydantic_object=CategorizationOutput)
+        
+        # Create prompt template
+        self.prompt_template = ChatPromptTemplate.from_messages([
+            ("system", """You are an expert content analyst specializing in political and business communications. 
+            
+            {format_instructions}
+            
+            ENTITY TYPE OPTIONS:
+            {entity_types}
+            
+            SENTIMENT OPTIONS:
+            {sentiment_options}
+            
+            POLICY DOMAINS:
+            {policy_domains}
+            """),
+            ("user", """Analyze the following political communication and extract structured entity mentions:
+
+TITLE: {title}
+SPEAKERS: {speakers}
+DATE: {date}
+CONTENT: {content}
+
+INSTRUCTIONS:
+1. Identify all significant entities mentioned (people, companies, countries, policy tools)
+2. For each entity, determine its type and sentiment
+3. Use canonical names for entities (e.g., "Apple Inc." → "Apple", "President Biden" → "Joe Biden")
+4. Only classify sentiment when clearly expressed by the speaker
+5. Extract direct quotes from the original text that best illustrate how the entity was discussed
+
+CRITICAL QUOTE EXTRACTION RULES:
+   - Quotes MUST be verbatim excerpts from the original text - copy exactly as written
+   - Do NOT paraphrase, summarize, or modify the original language
+   - Do NOT create new text or fill in missing words
+   - If a quote contains partial sentences, include ellipsis (...) to indicate truncation
+   - Choose quotes that best show the speaker's sentiment or key context about the entity
+   - Include 1-3 most relevant quotes per entity
+   - If no direct quotes exist for an entity, use an empty quotes array []
+   - Verify each quote appears exactly as written in the original text
+
+Return structured JSON with categories containing entities and their supporting quotes.""")
+        ])
+        
+        # Create the chain
+        self.chain = (
+            {
+                "format_instructions": lambda x: self.output_parser.get_format_instructions(),
+                "entity_types": lambda x: self._get_enum_guidance(EntityType),
+                "sentiment_options": lambda x: self._get_enum_guidance(SentimentLevel),
+                "policy_domains": lambda x: self._get_enum_guidance(PolicyDomain),
+                "title": RunnablePassthrough(),
+                "speakers": RunnablePassthrough(),
+                "date": RunnablePassthrough(),
+                "content": RunnablePassthrough(),
+            }
+            | self.prompt_template
+            | self.llm
+            | self.output_parser
+        )
+    
+    def _get_enum_guidance(self, enum_class) -> str:
+        """Generate guidance text from enum descriptions"""
+        return "\n".join(f"  {item.value}: {item.description}" for item in enum_class)
+    
     
     def categorize_content(self, content_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Categorize content from a JSON data structure.
+        Categorize content from a dictionary.
         
         Args:
-            content_data: Dictionary containing content to categorize. Expected keys:
-                - 'transcript': The main text content
-                - 'title': Title of the content
-                - 'speakers': List of speakers
-                - 'date': Date of the content
-                - Other metadata fields
+            content_data: Dictionary containing content to categorize
         
         Returns:
-            Dictionary containing categorization results with topics, entities, and relationships
+            Dictionary containing categorization results
         """
         transcript = content_data.get('transcript', '')
         title = content_data.get('title', '')
@@ -48,117 +122,60 @@ class ContentCategorizer:
         if not transcript:
             raise ValueError("No transcript found in content data")
         
-        # Create the prompt for categorization
-        prompt = self._create_categorization_prompt(transcript, title, speakers, date)
-        
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are an expert content analyst specializing in political and business communications. Extract structured information from text content."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=config.OPENAI_TEMPERATURE,
-                max_tokens=config.OPENAI_MAX_TOKENS
-            )
+            self.logger.info(f"Starting categorization for content: {content_data.get('id', 'unknown')}")
+            self.logger.debug(f"Processing transcript length: {len(transcript)} characters")
             
-            # Parse the response
-            categorization_result = self._parse_categorization_response(response.choices[0].message.content)
+            # Run the chain
+            result = self.chain.invoke({
+                "title": title,
+                "speakers": ", ".join(speakers),
+                "date": date,
+                "content": transcript[:config.MAX_TRANSCRIPT_LENGTH]
+            })
             
-            # Add metadata
-            categorization_result['metadata'] = {
-                'model_used': self.model,
-                'content_id': content_data.get('id', ''),
+            # Convert to dict and add metadata
+            output = result.dict()
+            output['metadata'] = {
+                'model_used': config.OPENAI_MODEL,
+                'id': content_data.get('id', ''),
                 'categorization_date': date,
                 'speakers': speakers
             }
             
-            return categorization_result
+            
+            categories_count = len(output.get('categories', []))
+            entities_count = sum(len(cat.get('entities', [])) for cat in output.get('categories', []))
+            
+            self.logger.info(f"Successfully categorized content: {categories_count} categories, {entities_count} entities")
+            
+            return output
             
         except Exception as e:
-            raise Exception(f"OpenAI categorization failed: {str(e)}")
+            self.logger.error(f"LangChain categorization failed for content {content_data.get('id', 'unknown')}: {str(e)}")
+            raise Exception(f"LangChain categorization failed: {str(e)}")
     
-    def _create_categorization_prompt(self, transcript: str, title: str, speakers: List[str], date: str) -> str:
-        
-        prompt = f"""
-Analyze the following speech and extract categories with entities and direct quotes:
-
-TITLE: {title}
-SPEAKERS: {', '.join(speakers)}
-DATE: {date}
-CONTENT: {transcript[:config.MAX_TRANSCRIPT_LENGTH]}
-
-Extract the main categories discussed, identify entities within each category, and provide direct quotes about each entity.
-
-Return JSON with this structure:
-{{
-    "categories": [
-        {{
-            "category": "Category Name (e.g., Immigration Policy, Economic Policy, Foreign Relations)",
-            "entities": [
-                {{
-                    "entity": "Entity Name (person, organization, country, etc.)",
-                    "quotes": [
-                        "Direct quote about this entity",
-                        "Another direct quote about this entity"
-                    ]
-                }}
-            ]
-        }}
-    ]
-}}
-
-Guidelines:
-- Identify 3-7 main categories from the speech
-- For each category, list the key entities mentioned
-- Provide 1-3 direct quotes for each entity (exact quotes from the speech)
-- Keep quotes concise (1-2 sentences max)
-- Focus on substantive content, not filler words
-
-Return only valid JSON, no additional text.
-"""
-        return prompt
-    
-    def _parse_categorization_response(self, response_text: str) -> Dict[str, Any]:
-        try:
-            # Clean the response text (remove any markdown formatting)
-            cleaned_text = response_text.strip()
-            if cleaned_text.startswith('```json'):
-                cleaned_text = cleaned_text[7:]
-            if cleaned_text.endswith('```'):
-                cleaned_text = cleaned_text[:-3]
-            
-            return json.loads(cleaned_text)
-        except json.JSONDecodeError as e:
-            raise Exception(f"Failed to parse OpenAI response as JSON: {str(e)}")
     
     def categorize_batch(self, content_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        self.logger.info(f"Starting batch processing of {len(content_list)} items")
+        
         results = []
+        successful_count = 0
+        failed_count = 0
+        
         for i, content in enumerate(content_list):
             try:
                 result = self.categorize_content(content)
                 results.append(result)
-                print(f"Processed item {i+1}/{len(content_list)}")
+                successful_count += 1
+                self.logger.info(f"Successfully processed item {i+1}/{len(content_list)} (ID: {content.get('id', 'unknown')})")
             except Exception as e:
-                print(f"Failed to process item {i+1}: {str(e)}")
-                results.append({"error": str(e), "content_id": content.get('id', '')})
+                failed_count += 1
+                self.logger.error(f"Failed to process item {i+1}/{len(content_list)} (ID: {content.get('id', 'unknown')}): {str(e)}")
+                results.append({"error": str(e), "id": content.get('id', '')})
         
+        self.logger.info(f"Batch processing completed: {successful_count} successful, {failed_count} failed")
         return results
 
 
-def categorize_speech_file(file_path: str) -> Dict[str, Any]:
-    """
-    Convenience function to categorize a single speech file.
-    
-    Args:
-        file_path: Path to the JSON file containing speech data
-    
-    Returns:
-        Categorization results with categories, entities, and quotes
-    """
-    with open(file_path, 'r', encoding='utf-8') as f:
-        content_data = json.load(f)
-    
-    categorizer = ContentCategorizer()
-    return categorizer.categorize_content(content_data)
 

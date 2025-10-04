@@ -1,0 +1,25 @@
+{
+    "jupyter.interactiveWindow.creationMode": "perFile",
+    "jupyter.askForKernelRestart": false,
+    "jupyter.enableScrollingForCellOutputs": true,
+    "jupyter.addGotoCodeLens": true,
+    "jupyter.variableExplorerExclude": "module;function;builtin_function_or_method",
+    "jupyter.runStartupCommands": [
+        "%load_ext autoreload",
+        "%autoreload 2"
+    ],
+    "python.defaultInterpreterPath": "python",
+    "python.terminal.activateEnvironment": true,
+    "files.associations": {
+        "*.py": "python"
+    },
+    "notebook.cellToolbarLocation": {
+        "default": "right",
+        "jupyter-notebook": "left"
+    },
+    "jupyter.textOutputLimit": 0,
+    "jupyter.logging.level": "error",
+    "jupyter.interactiveWindow.textEditor.executeSelection": true,
+    "jupyter.enableCodeLenses": true,
+    "jupyter.askForKernelRestart": false
+}

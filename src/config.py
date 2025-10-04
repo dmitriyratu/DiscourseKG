@@ -5,6 +5,7 @@ Configuration settings for the KG-Sentiment platform.
 import os
 from typing import Optional
 from dotenv import load_dotenv
+import logging
 
 
 
@@ -33,16 +34,6 @@ class Config:
     MAX_TRANSCRIPT_LENGTH: int = 4000  # Characters to send to OpenAI
     BATCH_SIZE: int = 10  # For batch processing
     
-    # Logging
-    LOG_LEVEL: str = os.getenv('LOG_LEVEL', 'INFO')
-    
-    @classmethod
-    def validate_config(cls) -> bool:
-        """Validate that required configuration is present."""
-        if not cls.OPENAI_API_KEY:
-            print("Warning: OPENAI_API_KEY not found in environment variables")
-            return False
-        return True
 
 
 # Global config instance
