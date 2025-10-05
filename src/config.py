@@ -29,6 +29,8 @@ class Config:
     RAW_DATA_PATH: str = os.path.join(DATA_ROOT, "raw")
     PROCESSED_DATA_PATH: str = os.path.join(DATA_ROOT, "processed")
     OUTPUTS_PATH: str = os.path.join(DATA_ROOT, "outputs")
+    STATE_PATH: str = os.path.join(DATA_ROOT, "state")
+    PIPELINE_STATE_FILE: str = os.path.join(STATE_PATH, "pipeline_state.jsonl")
     
     # Analysis Settings
     MAX_TRANSCRIPT_LENGTH: int = 4000  # Characters to send to OpenAI

@@ -1,0 +1,36 @@
+---
+alwaysApply: true
+---
+
+# Jupyter-Compatible Test Creation Rule
+
+When creating Python test files (especially in the `playground/` directory), always structure them as Jupyter-compatible scripts that can be run interactively. Follow this pattern:
+
+## Required Structure
+
+1. **Use cell delimiters**: Start each logical section with `# %%` to create Jupyter cells
+2. **Cell documentation**: Add descriptive comments for each cell explaining its purpose
+3. **Sequential execution**: Structure cells so they can be run in order from top to bottom
+4. **Self-contained imports**: Put all imports in the first cell(s)
+5. **Clear output**: Use print statements to show progress and results
+6. **Error handling**: Include try-catch blocks with informative error messages
+7. **Interactive feedback**: Provide status messages like `[OK]`, `[ERROR]`, `[INFO]`, etc.
+
+
+## Key Guidelines
+
+- **Always use `# %%`** to separate logical test sections
+- **Include descriptive cell headers** with clear purpose statements
+- **Make cells runnable independently** while maintaining logical flow
+- **Include comprehensive error handling** with traceback printing
+- **Provide visual separators** with `print("=" * 60)` for major sections
+- **Show progress indicators** so users know what's happening
+- **Include final summary cells** showing test results and next steps
+
+## File Naming Convention
+
+- Use descriptive names: `test_feature_name.py`
+- Place in `playground/` directory for interactive testing
+
+
+This approach ensures all tests can be run interactively in Jupyter notebooks or VS Code with Python extension, making development and debugging much more efficient.

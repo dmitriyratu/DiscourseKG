@@ -1,0 +1,45 @@
+"""
+Pipeline configuration for KG-Sentiment platform.
+
+Defines the pipeline stages and flow
+"""
+
+from dataclasses import dataclass
+from typing import Optional
+
+
+@dataclass
+class PipelineStages:
+    """Pipeline stage definitions"""
+    RAW = "raw"
+    SUMMARIZE = "summarize" 
+    CATEGORIZE = "categorize"
+
+
+class PipelineConfig:
+    """Pipeline stage flow configuration"""
+    
+    # Define stage flow (what comes after each stage)
+    STAGE_FLOW = {
+        PipelineStages.RAW: PipelineStages.SUMMARIZE,
+        PipelineStages.SUMMARIZE: PipelineStages.CATEGORIZE, 
+        PipelineStages.CATEGORIZE: None  # Pipeline complete
+    }
+    
+    # First stage to process (after raw data is available)
+    FIRST_PROCESSING_STAGE = PipelineStages.SUMMARIZE
+    
+    @classmethod
+    def get_next_stage(cls, current_stage: str) -> Optional[str]:
+        """Get the next stage after the current one"""
+        return cls.STAGE_FLOW.get(current_stage)
+    
+    @classmethod
+    def is_pipeline_complete(cls, next_stage: Optional[str]) -> bool:
+        """Check if the pipeline is complete"""
+        return next_stage is None
+
+
+# Export for easy importing
+pipeline_stages = PipelineStages()
+pipeline_config = PipelineConfig()

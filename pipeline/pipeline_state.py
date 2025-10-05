@@ -1,0 +1,145 @@
+"""
+Pipeline state management utilities for KG-Sentiment platform.
+
+This module provides state tracking for the data processing pipeline,
+following the same patterns as the existing logging utilities.
+"""
+
+import json
+from pathlib import Path
+from typing import Optional, List
+from datetime import datetime
+
+from src.schemas import PipelineState, PipelineStageStatus
+from src.config import config
+from src.utils.logging_utils import setup_logger
+from .config import pipeline_config, pipeline_stages
+
+
+class PipelineStateManager:
+    """Manages pipeline state tracking for data processing"""
+    
+    def __init__(self, state_file_path: str = None):
+        self.state_file_path = Path(state_file_path or config.PIPELINE_STATE_FILE)
+        self.state_file_path.parent.mkdir(parents=True, exist_ok=True)
+        self.logger = setup_logger("pipeline_state", "pipeline_state.log")
+    
+    def create_state(self, data_point_id: str, scrape_cycle: str) -> PipelineState:
+        """Create a new pipeline state for a data point"""
+        now = datetime.now().isoformat()
+        
+        state = PipelineState(
+            id=data_point_id,
+            scrape_cycle=scrape_cycle,
+            latest_completed_stage=pipeline_stages.RAW,
+            next_stage=pipeline_config.FIRST_PROCESSING_STAGE,
+            created_at=now,
+            updated_at=now
+        )
+        
+        # Append to state file
+        self._append_state(state)
+        self.logger.info(f"Created pipeline state for data point: {data_point_id}")
+        
+        return state
+    
+    def get_state(self, data_point_id: str) -> Optional[PipelineState]:
+        """Get current state for a data point"""
+        if not self.state_file_path.exists():
+            return None
+            
+        with open(self.state_file_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    record = json.loads(line.strip())
+                    if record["id"] == data_point_id:
+                        return PipelineState(**record)
+        return None
+    
+    def update_stage_status(self, data_point_id: str, stage: str, status: PipelineStageStatus, 
+                           error_message: str = None, processing_time: float = None):
+        """Update status of a specific stage for a data point"""
+        # Read all existing states
+        states = self._read_all_states()
+        
+        # Find and update the matching state
+        updated = False
+        for state_dict in states:
+            if state_dict["id"] == data_point_id:
+                state_dict["updated_at"] = datetime.now().isoformat()
+                
+                if processing_time:
+                    if state_dict["processing_time_seconds"]:
+                        state_dict["processing_time_seconds"] += processing_time
+                    else:
+                        state_dict["processing_time_seconds"] = processing_time
+                
+                # Handle stage completion or failure
+                if status == PipelineStageStatus.COMPLETED:
+                    # Stage completed successfully - update latest_completed_stage and next_stage
+                    state_dict["latest_completed_stage"] = stage
+                    state_dict["next_stage"] = pipeline_config.get_next_stage(stage)
+                    state_dict["error_message"] = None  # Clear any previous errors
+                elif status == PipelineStageStatus.FAILED:
+                    # Stage failed - don't update latest_completed_stage, keep next_stage the same for retry
+                    state_dict["error_message"] = error_message
+                    # next_stage stays the same (retry the failed stage)
+                
+                updated = True
+                break
+        
+        if updated:
+            # Rewrite the entire file with updated states
+            self._write_all_states(states)
+            self.logger.info(f"Updated {stage} status to {status.value} for data point: {data_point_id}")
+        else:
+            self.logger.warning(f"Data point not found for update: {data_point_id}")
+    
+    def get_next_stage_tasks(self, stage: str) -> List[PipelineState]:
+        """Get all data points where the next_stage matches the requested stage"""
+        tasks = []
+        states = self._read_all_states()
+        
+        for state_dict in states:
+            if state_dict.get("next_stage") == stage:
+                tasks.append(PipelineState(**state_dict))
+        
+        return tasks
+    
+    def get_failed_tasks(self) -> List[PipelineState]:
+        """Get all data points that have failed (have error_message)"""
+        failed = []
+        states = self._read_all_states()
+        
+        for state_dict in states:
+            if state_dict.get("error_message"):
+                failed.append(PipelineState(**state_dict))
+        
+        return failed
+    
+    
+    def _append_state(self, state: PipelineState):
+        """Append a new state to the file"""
+        with open(self.state_file_path, "a", encoding="utf-8") as f:
+            f.write(state.model_dump_json() + "\n")
+    
+    def _read_all_states(self) -> List[dict]:
+        """Read all states from the file"""
+        states = []
+        if not self.state_file_path.exists():
+            return states
+            
+        with open(self.state_file_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    states.append(json.loads(line.strip()))
+        
+        return states
+    
+    def _write_all_states(self, states: List[dict]):
+        """Write all states to the file"""
+        with open(self.state_file_path, "w", encoding="utf-8") as f:
+            for state_dict in states:
+                f.write(json.dumps(state_dict) + "\n")
+    
+    

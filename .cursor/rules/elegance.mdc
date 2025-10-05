@@ -1,0 +1,115 @@
+---
+alwaysApply: true
+---
+
+# Elegance and Conciseness Rule
+
+Always prioritize the most elegant, concise, and non-verbose solutions when creating code, documentation, or responses.
+
+## Core Principles
+
+1. **Simplicity First**: Choose the simplest solution that works correctly
+2. **Minimal Verbosity**: Avoid unnecessary explanations, comments, or code
+3. **Clean Architecture**: Prefer clean, readable code over complex optimizations
+4. **Essential Information Only**: Include only what's necessary for understanding and functionality
+
+## Code Guidelines
+
+- **Use existing libraries** instead of writing boilerplate code from scratch
+- **Leverage established packages** for common functionality (requests, pandas, numpy, etc.)
+- **Research available solutions** before implementing custom logic
+- **Use list/dict comprehensions** instead of verbose loops when appropriate
+- **Choose descriptive names** over extensive comments
+- **Implement minimal viable solutions** that can be extended later if needed
+- **Avoid over-engineering** - solve the actual problem, not imaginary future problems
+
+## Library-First Approach
+
+**Before writing custom code, check if:**
+- Standard library has what you need (`collections`, `itertools`, `functools`, etc.)
+- Popular packages exist (`requests`, `pandas`, `numpy`, `pathlib`, `typing`)
+- Domain-specific libraries are available for your use case
+- Simple configuration can replace complex custom logic
+
+**Examples:**
+```python
+# Instead of custom JSON handling
+import json
+with open('data.json') as f:
+    data = json.load(f)
+
+# Instead of manual path operations
+from pathlib import Path
+file_path = Path('data') / 'file.json'
+
+# Instead of custom HTTP requests
+import requests
+response = requests.get(url)
+```
+
+## Documentation Guidelines
+
+- **Concise explanations**: Get to the point quickly
+- **Essential examples only**: Show the core concept without excessive detail
+- **Clear structure**: Use formatting that enhances readability without verbosity
+- **Actionable content**: Focus on what the user needs to know to proceed
+
+## Docstring Guidelines
+
+- **Keep docstrings brief**: One line for simple functions, 2-3 lines for complex ones
+- **Focus on purpose, not implementation**: Say what it does, not how it does it
+- **Avoid obvious details**: Don't document what the code already makes clear
+- **Use simple language**: Write for developers, not documentation generators
+
+**Examples:**
+```python
+# Good: Brief and to the point
+def process_data(data):
+    """Process and return cleaned data."""
+    return [item.strip() for item in data if item]
+
+# Avoid: Overly verbose
+def process_data(data):
+    """
+    This function processes the input data by cleaning it and returning
+    a list of cleaned items. It removes whitespace and filters out
+    empty items from the input data list.
+    """
+    return [item.strip() for item in data if item]
+```
+
+## Response Style
+
+- **Direct answers**: Answer the question asked, nothing more
+- **Efficient solutions**: Provide working solutions without over-explanation
+- **Clean formatting**: Use formatting that enhances clarity without clutter
+- **Focus on results**: Prioritize getting things working over extensive documentation
+
+## When to Be More Detailed
+
+Only add verbosity when:
+- The solution requires explanation for safety or correctness
+- The user explicitly requests detailed explanations
+- Complex domain knowledge is necessary for understanding
+- Debugging requires step-by-step analysis
+
+## Examples of Elegant Solutions
+
+**Instead of verbose:**
+```python
+def process_items(items):
+    result = []
+    for item in items:
+        if item is not None and item != "":
+            processed_item = item.strip().lower()
+            result.append(processed_item)
+    return result
+```
+
+**Use elegant:**
+```python
+def process_items(items):
+    return [item.strip().lower() for item in items if item and item.strip()]
+```
+
+This approach ensures solutions are both functional and aesthetically pleasing, following the principle that "perfection is achieved not when there is nothing more to add, but when there is nothing left to take away."
