@@ -24,13 +24,16 @@ class PipelineStateManager:
         self.state_file_path.parent.mkdir(parents=True, exist_ok=True)
         self.logger = setup_logger("pipeline_state", "pipeline_state.log")
     
-    def create_state(self, data_point_id: str, scrape_cycle: str) -> PipelineState:
+    def create_state(self, data_point_id: str, scrape_cycle: str, raw_file_path: str = None, 
+                    source_url: str = None) -> PipelineState:
         """Create a new pipeline state for a data point"""
         now = datetime.now().isoformat()
         
         state = PipelineState(
             id=data_point_id,
             scrape_cycle=scrape_cycle,
+            raw_file_path=raw_file_path,
+            source_url=source_url,
             latest_completed_stage=pipeline_stages.RAW,
             next_stage=pipeline_config.FIRST_PROCESSING_STAGE,
             created_at=now,
@@ -42,6 +45,14 @@ class PipelineStateManager:
         self.logger.info(f"Created pipeline state for data point: {data_point_id}")
         
         return state
+    
+    def get_by_source_url(self, source_url: str) -> Optional[PipelineState]:
+        """Check if source URL already exists in pipeline"""
+        states = self._read_all_states()
+        for state_dict in states:
+            if state_dict.get("source_url") == source_url:
+                return PipelineState(**state_dict)
+        return None
     
     def get_state(self, data_point_id: str) -> Optional[PipelineState]:
         """Get current state for a data point"""

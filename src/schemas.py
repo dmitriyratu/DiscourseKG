@@ -127,9 +127,11 @@ class SummarizationResult(BaseModel):
 class PipelineState(BaseModel):
     """Pipeline processing state for a single data point"""
     
-    # Core identifiers (matching your existing data structure)
+    # Core identifiers
     id: str = Field(..., description="Unique ID from raw data (matches the 'id' field in raw JSON files)")
     scrape_cycle: str = Field(..., description="Hourly timestamp when scraped (YYYY-MM-DD_HH:00:00)")
+    raw_file_path: Optional[str] = Field(None, description="Path to raw JSON file (relative to project root)")
+    source_url: Optional[str] = Field(None, description="Original source URL (for deduplication and audit trail)")
     
     # Simple stage tracking
     latest_completed_stage: Optional[str] = Field(None, description="Latest successfully completed stage (None, 'raw', 'summarize', 'categorize')")
