@@ -1,43 +1,115 @@
 # Cursor Rules for KG-Sentiment Project
 
-## Architecture Documentation (Automated)
+## Architecture Documentation
 
-Architecture documentation is automatically generated on every commit via:
-- Git pre-commit hook → `scripts/update_architecture.py`
-- Uses GPT-4o to analyze entire codebase
-- Generates comprehensive ARCHITECTURE.md with Mermaid diagrams
+When the user says "update architecture", "update docs", or similar:
 
-If you need to manually regenerate:
-1. Run: `python scripts/update_architecture.py`
-2. Or ask: "Update architecture documentation"
+### Analysis Steps
+1. Read and analyze ALL Python files in:
+   - `flows/` - Prefect orchestration (@flow, @task decorators)
+   - `pipeline/` - State management and pipeline logic
+   - `src/` - Core processing components (preprocessing, processing, schemas, config)
 
-## Manual Architecture Update
+2. Extract from code:
+   - Class definitions and their methods
+   - Function definitions and decorators
+   - Import statements and dependencies
+   - Pydantic models from schemas.py
+   - Enum definitions (EntityType, SentimentLevel, PolicyDomain, etc.)
+   - Configuration settings
 
-When the user says "update architecture" or "update docs":
-1. Analyze the entire codebase (flows/, pipeline/, src/)
-2. Generate comprehensive ARCHITECTURE.md with:
-   - Component summary table with counts
-   - Mermaid system architecture diagram
-   - Mermaid pipeline state diagram  
-   - Mermaid data model class diagram
-   - Mermaid sequence diagram
-   - Component details with actual classes/functions found
-   - Technology stack analysis
-   - Directory structure
-3. Write to documentation/ARCHITECTURE.md
-4. Include current timestamp
+3. Identify relationships:
+   - Which modules import which
+   - Which functions call which
+   - Data flow between components
+   - State transitions in pipeline
 
-## Code Analysis Guidelines
+### Generate documentation/architecture.md
 
-When analyzing code:
-- Parse actual Python files to extract structure
-- Identify Prefect @flow and @task decorators
-- Extract class names, function names, imports
-- Identify dependencies and relationships
-- Create accurate diagrams based on real code structure
-- Focus on how components interact
+Include these sections:
 
-## Documentation Style
+1. **Header**
+   - Title: "# KG-Sentiment Platform Architecture"
+   - Timestamp: Current date/time
+   - Brief overview paragraph
 
-Follow the workspace rules for elegance and conciseness.
+2. **Component Summary Table**
+   ```
+   | Component Type | Count | Names |
+   ```
+   - Prefect Flows (with @flow decorator)
+   - Prefect Tasks (with @task decorator)
+   - Pipeline Modules
+   - Processing Components
+   - Pydantic Models
 
+3. **System Architecture Diagram (Mermaid)**
+   - Show all major components as nodes
+   - Show data flow with arrows
+   - Group by layer (Orchestration, Pipeline, Processing, Storage)
+   - Use actual file/class names from code
+   - Include subgraphs for logical grouping
+
+4. **Pipeline State Flow Diagram (Mermaid)**
+   - Extract stages from pipeline/config.py
+   - Show: RAW → SUMMARIZE → CATEGORIZE → Complete
+   - Include retry/failure paths
+   - Add notes explaining each stage
+
+5. **Data Model Class Diagram (Mermaid)**
+   - Parse src/schemas.py
+   - Show all Pydantic models with fields
+   - Show Enums with values
+   - Show relationships (composition, inheritance)
+   - Include field types
+
+6. **Sequence Diagram (Mermaid)**
+   - Show typical flow execution
+   - Include: User → Flow → Task → Pipeline → Component → Storage
+   - Show state updates
+   - Show data transformations
+
+7. **Component Details**
+   - List each flow with its functions
+   - List each pipeline module with classes/functions
+   - List each processor with capabilities
+   - Use actual names extracted from code
+
+8. **Technology Stack Table**
+   ```
+   | Layer | Technology |
+   ```
+   - Orchestration, LLM, Embeddings, Validation, Storage, etc.
+
+9. **Directory Structure**
+   - ASCII tree showing key folders
+   - Brief description of each
+
+10. **Key Design Patterns**
+    - Patterns observed in the code
+    - State management approach
+    - Error handling strategy
+
+### Code Quality
+- Use proper markdown formatting
+- Ensure all Mermaid diagrams have proper syntax
+- Use code fences: ```mermaid ... ```
+- Make diagrams readable (not too dense)
+- Use descriptive node names in diagrams
+
+### Style Guidelines
+- Be concise but comprehensive
+- Use bullet points for lists
+- Use tables for structured data
+- Add brief explanations for complex concepts
+- Include emoji sparingly (only in headers if at all)
+
+---
+
+## General Coding Rules
+
+Follow workspace elegance rules:
+- Prefer library solutions over custom code
+- Keep docstrings brief and purposeful
+- Use list/dict comprehensions
+- Write minimal viable solutions
