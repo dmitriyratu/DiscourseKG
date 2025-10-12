@@ -4,105 +4,59 @@
 
 When the user says "update architecture", "update docs", or similar:
 
-### Analysis Steps
-1. Read and analyze ALL Python files in:
-   - `flows/` - Prefect orchestration (@flow, @task decorators)
-   - `pipeline/` - State management and pipeline logic
-   - `src/` - Core processing components (preprocessing, processing, schemas, config)
+First delete existing documentation/architecture.md file, then
 
-2. Extract from code:
-   - Class definitions and their methods
-   - Function definitions and decorators
-   - Import statements and dependencies
-   - Pydantic models from schemas.py
-   - Enum definitions (EntityType, SentimentLevel, PolicyDomain, etc.)
-   - Configuration settings
+### Generate documentation/architecture.md with:
 
-3. Identify relationships:
-   - Which modules import which
-   - Which functions call which
-   - Data flow between components
-   - State transitions in pipeline
-
-### Generate documentation/architecture.md
-
-Include these sections:
-
-1. **Header**
-   - Title: "# KG-Sentiment Platform Architecture"
-   - Timestamp: Current date/time
-   - Brief overview paragraph
+1. **Header** - Title, timestamp, one-line project description
 
 2. **Component Summary Table**
-   ```
-   | Component Type | Count | Names |
-   ```
-   - Prefect Flows (with @flow decorator)
-   - Prefect Tasks (with @task decorator)
-   - Pipeline Modules
-   - Processing Components
-   - Pydantic Models
+   - Count flows, tasks, pipelines, processors, models, enums
+   - List names only (no descriptions)
 
 3. **System Architecture Diagram (Mermaid)**
-   - Show all major components as nodes
-   - Show data flow with arrows
-   - Group by layer (Orchestration, Pipeline, Processing, Storage)
+   - Show major components and data flow
    - Use actual file/class names from code
-   - Include subgraphs for logical grouping
+   - Group by layer (Orchestration, Pipeline, Processing, Storage)
+   - Keep it clean and readable
 
 4. **Pipeline State Flow Diagram (Mermaid)**
    - Extract stages from pipeline/config.py
    - Show: RAW → SUMMARIZE → CATEGORIZE → Complete
-   - Include retry/failure paths
-   - Add notes explaining each stage
+   - Add brief notes on each stage
 
 5. **Data Model Class Diagram (Mermaid)**
-   - Parse src/schemas.py
-   - Show all Pydantic models with fields
-   - Show Enums with values
-   - Show relationships (composition, inheritance)
-   - Include field types
+   - Parse src/schemas.py for Pydantic models and Enums
+   - Show relationships between models
+   - Include key field types
 
 6. **Sequence Diagram (Mermaid)**
-   - Show typical flow execution
-   - Include: User → Flow → Task → Pipeline → Component → Storage
-   - Show state updates
-   - Show data transformations
+   - Show one typical flow execution
+   - User → Flow → Task → Pipeline → Component → Storage
 
-7. **Component Details**
-   - List each flow with its functions
-   - List each pipeline module with classes/functions
-   - List each processor with capabilities
-   - Use actual names extracted from code
+7. **Data Flow & Integration** (focus on the journey)
+   - How data enters the system (scrape_flow → raw JSON)
+   - How flows orchestrate processing (which calls what)
+   - How tasks route data between stages
+   - What transformations happen at each stage (input → output)
+   - How state tracking enables the pipeline (PipelineStateManager role)
+   - Use bullet points showing data flow, not component catalogs
 
 8. **Technology Stack Table**
-   ```
-   | Layer | Technology |
-   ```
-   - Orchestration, LLM, Embeddings, Validation, Storage, etc.
+   - Layer | Technology | Purpose (one phrase)
 
-9. **Directory Structure**
-   - ASCII tree showing key folders
-   - Brief description of each
+9. **Directory Structure** - ASCII tree with brief labels
 
-10. **Key Design Patterns**
-    - Patterns observed in the code
-    - State management approach
-    - Error handling strategy
+10. **Key Design Patterns** - 3-5 patterns, one sentence each
 
-### Code Quality
-- Use proper markdown formatting
-- Ensure all Mermaid diagrams have proper syntax
-- Use code fences: ```mermaid ... ```
-- Make diagrams readable (not too dense)
-- Use descriptive node names in diagrams
+11. **Data Flow Summary** - Bullet points showing pipeline stages
 
-### Style Guidelines
-- Be concise but comprehensive
-- Use bullet points for lists
-- Use tables for structured data
-- Add brief explanations for complex concepts
-- Include emoji sparingly (only in headers if at all)
+### Style:
+- Be concise - one sentence or bullet point per concept
+- No redundant information
+- Focus on "what" and "how", skip "why" unless critical
+- Use tables and lists over paragraphs
+- Skip obvious explanations
 
 ---
 
