@@ -1,0 +1,43 @@
+# Cursor Rules for KG-Sentiment Project
+
+## Architecture Documentation (Automated)
+
+Architecture documentation is automatically generated on every commit via:
+- Git pre-commit hook → `scripts/update_architecture.py`
+- Uses GPT-4o to analyze entire codebase
+- Generates comprehensive ARCHITECTURE.md with Mermaid diagrams
+
+If you need to manually regenerate:
+1. Run: `python scripts/update_architecture.py`
+2. Or ask: "Update architecture documentation"
+
+## Manual Architecture Update
+
+When the user says "update architecture" or "update docs":
+1. Analyze the entire codebase (flows/, pipeline/, src/)
+2. Generate comprehensive ARCHITECTURE.md with:
+   - Component summary table with counts
+   - Mermaid system architecture diagram
+   - Mermaid pipeline state diagram  
+   - Mermaid data model class diagram
+   - Mermaid sequence diagram
+   - Component details with actual classes/functions found
+   - Technology stack analysis
+   - Directory structure
+3. Write to documentation/ARCHITECTURE.md
+4. Include current timestamp
+
+## Code Analysis Guidelines
+
+When analyzing code:
+- Parse actual Python files to extract structure
+- Identify Prefect @flow and @task decorators
+- Extract class names, function names, imports
+- Identify dependencies and relationships
+- Create accurate diagrams based on real code structure
+- Focus on how components interact
+
+## Documentation Style
+
+Follow the workspace rules for elegance and conciseness.
+
