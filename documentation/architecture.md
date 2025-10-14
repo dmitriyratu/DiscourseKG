@@ -77,35 +77,35 @@ The KG-Sentiment platform is a sophisticated data processing system that transfo
 ```mermaid
 graph TB
     subgraph "Orchestration Layer"
-        ORCH[tasks/orchestration.py<br/>get_items()]
+        ORCH["tasks/orchestration.py<br/>get_items()"]
     end
     
     subgraph "Flow Layer"
-        SCRAPE[flows/scrape_flow.py<br/>Scrape Flow]
-        PREPROC[flows/preprocessing_flow.py<br/>Preprocessing Flow]
-        PROC[flows/processing_flow.py<br/>Processing Flow]
+        SCRAPE["flows/scrape_flow.py<br/>Scrape Flow"]
+        PREPROC["flows/preprocessing_flow.py<br/>Preprocessing Flow"]
+        PROC["flows/processing_flow.py<br/>Processing Flow"]
     end
     
     subgraph "State Management"
-        STATE[src/shared/pipeline_state.py<br/>PipelineStateManager]
-        CONFIG[src/shared/config.py<br/>PipelineConfig]
+        STATE["src/shared/pipeline_state.py<br/>PipelineStateManager"]
+        CONFIG["src/shared/config.py<br/>PipelineConfig"]
     end
     
     subgraph "Processing Layer"
-        SCRAPE_EP[src/collect/scrape_endpoint.py<br/>ScrapeEndpoint]
-        SUMM_EP[src/preprocessing/summarize_endpoint.py<br/>SummarizeEndpoint]
-        CAT_EP[src/processing/categorize_endpoint.py<br/>CategorizeEndpoint]
+        SCRAPE_EP["src/collect/scrape_endpoint.py<br/>ScrapeEndpoint"]
+        SUMM_EP["src/preprocessing/summarize_endpoint.py<br/>SummarizeEndpoint"]
+        CAT_EP["src/processing/categorize_endpoint.py<br/>CategorizeEndpoint"]
     end
     
     subgraph "Data Processing"
-        SUMMARIZER[src/preprocessing/extractive_summarizer.py<br/>ExtractiveSummarizer]
-        CATEGORIZER[src/processing/content_categorizer.py<br/>ContentCategorizer]
+        SUMMARIZER["src/preprocessing/extractive_summarizer.py<br/>ExtractiveSummarizer"]
+        CATEGORIZER["src/processing/content_categorizer.py<br/>ContentCategorizer"]
     end
     
     subgraph "Storage Layer"
-        LOADERS[tasks/data_loaders.py<br/>Data Loaders]
-        PERSIST[tasks/persistence.py<br/>Persistence]
-        SCHEMAS[src/schemas.py<br/>Data Schemas]
+        LOADERS["tasks/data_loaders.py<br/>Data Loaders"]
+        PERSIST["tasks/persistence.py<br/>Persistence"]
+        SCHEMAS["src/schemas.py<br/>Data Schemas"]
     end
     
     ORCH --> SCRAPE
