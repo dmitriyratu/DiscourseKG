@@ -1,7 +1,0 @@
-{
-    "jupyter.createCheckpointOnSave": false,
-    "jupyter.checkpointInterval": 0,
-    "python.defaultInterpreterPath": "python",
-    "python.terminal.activateEnvironment": false,
-    "python.terminal.activateEnvInCurrentTerminal": false
-}
