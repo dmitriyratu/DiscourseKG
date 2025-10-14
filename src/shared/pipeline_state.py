@@ -9,11 +9,34 @@ import json
 from pathlib import Path
 from typing import Optional, List
 from datetime import datetime
+from pydantic import BaseModel, Field
 
-from src.schemas import PipelineState, PipelineStageStatus
-from src.config import config
-from src.utils.logging_utils import setup_logger
-from .config import pipeline_config, pipeline_stages
+from src.app_config import config
+from src.shared.logging_utils import setup_logger
+from src.pipeline_config import pipeline_config, pipeline_stages, PipelineStageStatus
+
+
+class PipelineState(BaseModel):
+    """Pipeline processing state for a single data point"""
+    
+    # Core identifiers
+    id: str = Field(..., description="Unique ID from raw data (matches the 'id' field in raw JSON files)")
+    scrape_cycle: str = Field(..., description="Hourly timestamp when scraped (YYYY-MM-DD_HH:00:00)")
+    raw_file_path: Optional[str] = Field(None, description="Path to raw JSON file (relative to project root)")
+    source_url: Optional[str] = Field(None, description="Original source URL (for deduplication and audit trail)")
+    
+    # Simple stage tracking
+    latest_completed_stage: Optional[str] = Field(None, description="Latest successfully completed stage (None, 'raw', 'summarize', 'categorize')")
+    next_stage: Optional[str] = Field(..., description="Next stage that needs to be processed")
+    
+    # Metadata
+    created_at: str = Field(..., description="ISO timestamp when record was created")
+    updated_at: str = Field(..., description="ISO timestamp of last update")
+    error_message: Optional[str] = Field(None, description="Error message if current stage failed")
+    
+    # Processing metrics
+    processing_time_seconds: Optional[float] = Field(None, description="Total processing time across all stages")
+    retry_count: int = Field(default=0, description="Number of times this record has been retried")
 
 
 class PipelineStateManager:

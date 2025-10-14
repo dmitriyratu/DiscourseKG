@@ -5,7 +5,7 @@ Categorize endpoint for processing summarized content.
 from typing import Dict, Any
 from pathlib import Path
 
-from tasks.data_loaders import SummaryDataLoader
+from src.shared.data_loaders import SummaryDataLoader
 from src.processing.pipeline import process_content
 from src.shared.logging_utils import setup_logger
 

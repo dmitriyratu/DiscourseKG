@@ -6,12 +6,12 @@ from langchain_core.runnables import RunnablePassthrough
 from pydantic import BaseModel, Field
 import json
 
-from src.config import config
+from src.app_config import config
 from src.schemas import (
     PolicyDomain, EntityType, SentimentLevel, 
     EntityMention, CategoryWithEntities, CategorizationOutput
 )
-from src.utils.logging_utils import get_logger
+from src.shared.logging_utils import setup_logger
 
 
 class ContentCategorizer:
@@ -24,7 +24,7 @@ class ContentCategorizer:
     """
     
     def __init__(self):
-        self.logger = get_logger("content_categorizer", "content_categorizer.log")
+        self.logger = setup_logger("content_categorizer", "content_categorizer.log")
         
         llm_kwargs = {
             "model": config.OPENAI_MODEL,
@@ -155,27 +155,6 @@ Return structured JSON with categories containing entities and their supporting 
             self.logger.error(f"LangChain categorization failed for content {content_data.get('id', 'unknown')}: {str(e)}")
             raise Exception(f"LangChain categorization failed: {str(e)}")
     
-    
-    def categorize_batch(self, content_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        self.logger.info(f"Starting batch processing of {len(content_list)} items")
-        
-        results = []
-        successful_count = 0
-        failed_count = 0
-        
-        for i, content in enumerate(content_list):
-            try:
-                result = self.categorize_content(content)
-                results.append(result)
-                successful_count += 1
-                self.logger.info(f"Successfully processed item {i+1}/{len(content_list)} (ID: {content.get('id', 'unknown')})")
-            except Exception as e:
-                failed_count += 1
-                self.logger.error(f"Failed to process item {i+1}/{len(content_list)} (ID: {content.get('id', 'unknown')}): {str(e)}")
-                results.append({"error": str(e), "id": content.get('id', '')})
-        
-        self.logger.info(f"Batch processing completed: {successful_count} successful, {failed_count} failed")
-        return results
 
 
 

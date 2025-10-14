@@ -5,7 +5,7 @@ Summarize endpoint for processing raw transcripts.
 from typing import Dict, Any
 from pathlib import Path
 
-from tasks.data_loaders import RawDataLoader
+from src.shared.data_loaders import RawDataLoader
 from src.preprocessing.pipeline import preprocess_content
 from src.shared.logging_utils import setup_logger
 

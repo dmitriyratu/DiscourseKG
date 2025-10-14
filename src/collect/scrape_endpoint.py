@@ -8,7 +8,7 @@ from pathlib import Path
 
 from src.shared.pipeline_state import PipelineStateManager
 from src.shared.logging_utils import setup_logger
-from tasks.persistence import save_data
+from src.shared.persistence import save_data
 from tests.test_transcript_generator import generate_test_transcript
 
 logger = setup_logger("ScrapeEndpoint", "scrape_flow.log")

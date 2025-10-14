@@ -2,11 +2,11 @@ from prefect import flow, task
 from datetime import datetime
 from typing import Dict, Any
 from tasks.orchestration import get_items
-from src.shared.config import pipeline_stages
+from src.pipeline_config import pipeline_stages
 from src.shared.pipeline_state import PipelineStateManager
-from src.schemas import PipelineStageStatus
+from src.pipeline_config import PipelineStageStatus
 from src.shared.logging_utils import setup_logger
-from tasks.persistence import save_data
+from src.shared.persistence import save_data
 from src.preprocessing.summarize_endpoint import SummarizeEndpoint
 
 logger = setup_logger("preprocessing_flow", "preprocessing_flow.log")

@@ -6,6 +6,16 @@ Defines the pipeline stages and flow
 
 from dataclasses import dataclass
 from typing import Optional
+from enum import Enum
+
+
+class PipelineStageStatus(str, Enum):
+    """Status of a pipeline stage"""
+    PENDING = "PENDING"
+    IN_PROGRESS = "IN_PROGRESS" 
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    INVALIDATED = "INVALIDATED"
 
 
 @dataclass

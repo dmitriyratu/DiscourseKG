@@ -11,34 +11,50 @@ When the user says "generate architecture", "update architecture", "update docs"
 - Explain the core pattern: `RAW → SUMMARIZE → CATEGORIZE → Complete`
 - Highlight key design patterns: state-driven processing, endpoint pattern, flow orchestration
 
-### **2. Walk Through Each Layer (Top to Bottom)**
-1. **Orchestration Level** (`tasks/orchestration.py`): How it queries state and determines work
-2. **Flow Level** (Prefect flows): How they coordinate processing (scrape, preprocessing, processing)
-3. **State Management** (`PipelineStateManager`): How it tracks items through stages
-4. **Pipeline Configuration** (`src/shared/config.py`): How stages are defined and flow together
-5. **Endpoint Level**: How each processing stage has dedicated endpoints
-6. **Data Processing**: How summarization and categorization work
-7. **Data Management**: How data is loaded, saved, and validated
-8. **Complete Data Flow**: Step-by-step journey from entry to completion
+### **2. Interactive Flow: Explain → Visualize → Explain → Visualize**
 
-### **3. Include Visual Elements with Requirements**
-- **System Architecture Diagram (Mermaid)**: Show major components and data flow, use actual file/class names
-  - *Requirements*: Group by layer (Orchestration, Pipeline, Processing, Storage), keep clean and readable
-- **Pipeline State Flow Diagram (Mermaid)**: Show: RAW → SUMMARIZE → CATEGORIZE → Complete
-  - *Requirements*: Extract stages from pipeline/config.py, add brief notes on each stage
-- **Data Model Class Diagram (Mermaid)**: Parse src/schemas.py for Pydantic models and Enums
-  - *Requirements*: Show relationships between models, include key field types
-- **Sequence Diagram (Mermaid)**: Show one typical flow execution
-  - *Requirements*: Show User → Flow → Task → Pipeline → Component → Storage flow
+**Follow this pattern throughout the document:**
 
-### **4. Add Supporting Information**
-- **Technology Stack Table**: Layer | Technology | Purpose
-- **Key Design Patterns**: 3-5 patterns, one sentence each
+#### **A. High-Level System Overview**
+- Explain the state-driven pipeline concept
+- **Immediately show**: Project Directory Tree (text-based) showing key directories and their purposes
+- **Then show**: System Architecture Diagram (Mermaid) with major components and data flow
 
-### **5. Style Guidelines**
-- Use specific file paths and function names
-- Explain the "what" and "how" of each component
-- Show relationships between components
+#### **B. Pipeline Flow & State Management** 
+- Explain how items move through stages (RAW → SUMMARIZE → CATEGORIZE)
+- **Immediately show**: Pipeline State Flow Diagram (Mermaid) with stage transitions
+
+#### **C. Data Models & Relationships**
+- Explain the domain models and their purposes
+- **Immediately show**: Data Model Class Diagram (Mermaid) with relationships
+
+#### **D. Processing Components**
+- Explain how each endpoint and processor works
+- **Immediately show**: Component Interaction Diagram (Mermaid) showing key interactions
+
+#### **E. Complete Workflow Example**
+- Explain a typical end-to-end processing flow
+- **Immediately show**: Sequence Diagram (Mermaid) showing User → Flow → Task → Pipeline → Storage
+
+#### **F. Technology & Patterns Summary**
+- Explain the tech stack and design patterns
+- **Immediately show**: Technology Stack Table
+
+### **3. Visual Requirements for Each Diagram**
+
+- **Project Directory Tree**: Show key directories with brief descriptions, use tree-like structure with indentation, focus on `src/`, `flows/`, `tasks/`, `data/`
+- **System Architecture Diagram**: Group by layer (Orchestration, Pipeline, Processing, Storage), use actual file/class names
+- **Pipeline State Flow Diagram**: Extract stages from pipeline_config.py, add brief notes on each stage
+- **Data Model Class Diagram**: Parse src/schemas.py for Pydantic models and Enums, show relationships and key field types
+- **Component Interaction Diagram**: Show how endpoints, processors, and data loaders interact
+- **Sequence Diagram**: Show User → Flow → Task → Pipeline → Component → Storage flow with actual method calls
+
+### **4. Style Guidelines**
+- **Alternate explanation and visualization** - never have more than 2-3 paragraphs without a diagram
+- Use specific file paths and function names in both text and diagrams
+- Explain the "what" and "how" of each component before showing it visually
+- Make diagrams immediately follow their explanations
+- Keep text sections focused and concise
 
 ---
 

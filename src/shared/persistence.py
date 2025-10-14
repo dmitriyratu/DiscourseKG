@@ -7,7 +7,7 @@ import json
 from datetime import datetime
 from typing import Any
 
-from src.config import config
+from src.app_config import config
 from src.shared.logging_utils import setup_logger
 
 logger = setup_logger("persistence", "persistence.log")

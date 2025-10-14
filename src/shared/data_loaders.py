@@ -9,7 +9,7 @@ import json
 from typing import Dict, Any
 from dataclasses import dataclass
 
-from src.config import config
+from src.app_config import config
 from src.shared.logging_utils import setup_logger
 
 logger = setup_logger("data_loaders", "data_loaders.log")
