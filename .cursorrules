@@ -38,7 +38,7 @@ First delete existing documentation/architecture.md file, then
    - How data enters the system (scrape_flow → raw JSON)
    - How flows orchestrate processing (which calls what)
    - How tasks route data between stages
-   - What transformations happen at each stage (input → output)
+   - What transformations happen at each stage (input → output) and their purpose within pipeline
    - How state tracking enables the pipeline (PipelineStateManager role)
    - Use bullet points showing data flow, not component catalogs
 
