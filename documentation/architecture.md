@@ -35,27 +35,27 @@ The platform is organized into four main layers that work together to process po
 ```mermaid
 graph TB
     subgraph "Orchestration Layer"
-        ORCH[tasks/orchestration.py<br/>get_items()]
-        FLOW1[flows/scrape_flow.py]
-        FLOW2[flows/preprocessing_flow.py]
-        FLOW3[flows/processing_flow.py]
+        ORCH["tasks/orchestration.py<br/>get_items()"]
+        FLOW1["flows/scrape_flow.py"]
+        FLOW2["flows/preprocessing_flow.py"]
+        FLOW3["flows/processing_flow.py"]
     end
     
     subgraph "Pipeline Layer"
-        STATE[src/shared/pipeline_state.py<br/>PipelineStateManager]
-        CONFIG[src/pipeline_config.py<br/>PipelineConfig]
+        STATE["src/shared/pipeline_state.py<br/>PipelineStateManager"]
+        CONFIG["src/pipeline_config.py<br/>PipelineConfig"]
     end
     
     subgraph "Processing Layer"
-        SCRAPE[src/collect/scrape_endpoint.py<br/>ScrapeEndpoint]
-        SUMMARIZE[src/preprocessing/summarize_endpoint.py<br/>SummarizeEndpoint]
-        CATEGORIZE[src/processing/categorize_endpoint.py<br/>CategorizeEndpoint]
-        LOADERS[src/shared/data_loaders.py<br/>RawDataLoader, SummaryDataLoader]
+        SCRAPE["src/collect/scrape_endpoint.py<br/>ScrapeEndpoint"]
+        SUMMARIZE["src/preprocessing/summarize_endpoint.py<br/>SummarizeEndpoint"]
+        CATEGORIZE["src/processing/categorize_endpoint.py<br/>CategorizeEndpoint"]
+        LOADERS["src/shared/data_loaders.py<br/>RawDataLoader, SummaryDataLoader"]
     end
     
     subgraph "Storage Layer"
-        PERSIST[src/shared/persistence.py<br/>save_data()]
-        DATA[(data/ directory<br/>JSON files)]
+        PERSIST["src/shared/persistence.py<br/>save_data()"]
+        DATA[("data/ directory<br/>JSON files")]
     end
     
     ORCH --> STATE
