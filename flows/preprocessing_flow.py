@@ -1,36 +1,34 @@
-from prefect import flow
-from pathlib import Path
-import json
+from prefect import flow, task
 from datetime import datetime
-from tasks.orchestration import get_items, process_item
+from typing import Dict, Any
+from tasks.orchestration import get_items
 from src.shared.config import pipeline_stages
 from src.shared.pipeline_state import PipelineStateManager
 from src.schemas import PipelineStageStatus
-from src.config import config
 from src.shared.logging_utils import setup_logger
+from tasks.persistence import save_data
+from src.preprocessing.summarize_endpoint import SummarizeEndpoint
 
 logger = setup_logger("preprocessing_flow", "preprocessing_flow.log")
 
 
 def save_summary(item_id: str, summary_result) -> str:
-    """Save summary to processed/summaries/ directory."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"summary_{item_id}_{timestamp}.json"
-    file_path = Path(config.PROCESSED_DATA_PATH) / "summaries" / filename
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    # Simple structure - just the essential data
-    data = {
-        "id": item_id,
-        "summary_text": summary_result.summary,
-        "processed_at": datetime.now().isoformat()
-    }
-    
-    with open(file_path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-    
-    logger.info(f"Saved summary to {file_path}")
-    return str(file_path)
+    """Save summary data."""
+    return save_data(item_id, summary_result, 'summary')
+
+
+@task(name="summarize_item", retries=2, retry_delay_seconds=30)
+def summarize_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    """Task to summarize article content."""
+    logger = setup_logger("summarize_task", "preprocessing_flow.log")
+    try:
+        logger.info("Calling SummarizeEndpoint...")
+        result = SummarizeEndpoint().execute(item)
+        logger.info(f"Summarization completed: {result}")
+        return result
+    except Exception as e:
+        logger.error(f"Error summarizing article: {str(e)}")
+        raise
 
 
 @flow
@@ -43,7 +41,7 @@ def preprocessing_flow():
     
     for item in items:
         # Process the item
-        result = process_item.submit(item, pipeline_stages.SUMMARIZE)
+        result = summarize_item.submit(item)
         
         # Wait for result and handle persistence/state updates
         if result.result()['success']:

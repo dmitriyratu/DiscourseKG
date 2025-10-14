@@ -1,36 +1,34 @@
-from prefect import flow
-from pathlib import Path
-import json
+from prefect import flow, task
 from datetime import datetime
-from tasks.orchestration import get_items, process_item
+from typing import Dict, Any
+from tasks.orchestration import get_items
 from src.shared.config import pipeline_stages
 from src.shared.pipeline_state import PipelineStateManager
 from src.schemas import PipelineStageStatus
-from src.config import config
 from src.shared.logging_utils import setup_logger
+from tasks.persistence import save_data
+from src.processing.categorize_endpoint import CategorizeEndpoint
 
 logger = setup_logger("processing_flow", "processing_flow.log")
 
 
 def save_categorization(item_id: str, categorization_result: dict) -> str:
-    """Save categorization to processed/categories/ directory."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"categorized_{item_id}_{timestamp}.json"
-    file_path = Path(config.PROCESSED_DATA_PATH) / "categories" / filename
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    # Simple structure - just the essential data
-    data = {
-        "id": item_id,
-        "categorization": categorization_result,
-        "processed_at": datetime.now().isoformat()
-    }
-    
-    with open(file_path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-    
-    logger.info(f"Saved categorization to {file_path}")
-    return str(file_path)
+    """Save categorization data."""
+    return save_data(item_id, categorization_result, 'categorization')
+
+
+@task(name="categorize_item", retries=2, retry_delay_seconds=30)
+def categorize_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    """Task to categorize article content."""
+    logger = setup_logger("categorize_task", "processing_flow.log")
+    try:
+        logger.info("Calling CategorizeEndpoint...")
+        result = CategorizeEndpoint().execute(item)
+        logger.info(f"Categorization completed: {result}")
+        return result
+    except Exception as e:
+        logger.error(f"Error categorizing article: {str(e)}")
+        raise
 
 
 @flow
@@ -43,7 +41,7 @@ def processing_flow():
     
     for item in items:
         # Process the item
-        result = process_item.submit(item, pipeline_stages.CATEGORIZE)
+        result = categorize_item.submit(item)
         
         # Wait for result and handle persistence/state updates
         if result.result()['success']:
