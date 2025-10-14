@@ -1,0 +1,51 @@
+# Cursor Rules for KG-Sentiment Project
+
+## Architecture Documentation
+
+When the user says "generate architecture", "update architecture", "update docs", or similar:
+
+**First delete existing documentation/architecture.md file, then generate a new one following this comprehensive approach:**
+
+### **1. Start with High-Level Overview**
+- Describe the system as a state-driven, multi-stage data processing pipeline
+- Explain the core pattern: `RAW → SUMMARIZE → CATEGORIZE → Complete`
+- Highlight key design patterns: state-driven processing, endpoint pattern, flow orchestration
+
+### **2. Walk Through Each Layer (Top to Bottom)**
+1. **Orchestration Level** (`tasks/orchestration.py`): How it queries state and determines work
+2. **Flow Level** (Prefect flows): How they coordinate processing (scrape, preprocessing, processing)
+3. **State Management** (`PipelineStateManager`): How it tracks items through stages
+4. **Pipeline Configuration** (`src/shared/config.py`): How stages are defined and flow together
+5. **Endpoint Level**: How each processing stage has dedicated endpoints
+6. **Data Processing**: How summarization and categorization work
+7. **Data Management**: How data is loaded, saved, and validated
+8. **Complete Data Flow**: Step-by-step journey from entry to completion
+
+### **3. Include Visual Elements with Requirements**
+- **System Architecture Diagram (Mermaid)**: Show major components and data flow, use actual file/class names
+  - *Requirements*: Group by layer (Orchestration, Pipeline, Processing, Storage), keep clean and readable
+- **Pipeline State Flow Diagram (Mermaid)**: Show: RAW → SUMMARIZE → CATEGORIZE → Complete
+  - *Requirements*: Extract stages from pipeline/config.py, add brief notes on each stage
+- **Data Model Class Diagram (Mermaid)**: Parse src/schemas.py for Pydantic models and Enums
+  - *Requirements*: Show relationships between models, include key field types
+- **Sequence Diagram (Mermaid)**: Show one typical flow execution
+  - *Requirements*: Show User → Flow → Task → Pipeline → Component → Storage flow
+
+### **4. Add Supporting Information**
+- **Technology Stack Table**: Layer | Technology | Purpose
+- **Key Design Patterns**: 3-5 patterns, one sentence each
+
+### **5. Style Guidelines**
+- Use specific file paths and function names
+- Explain the "what" and "how" of each component
+- Show relationships between components
+
+---
+
+## General Coding Rules
+
+Follow workspace elegance rules:
+- Prefer library solutions over custom code
+- Keep docstrings brief and purposeful
+- Use list/dict comprehensions
+- Write minimal viable solutions
