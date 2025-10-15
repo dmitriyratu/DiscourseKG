@@ -20,8 +20,8 @@ dependencies = [
 ]
 
 [project.scripts]
-kg-summarize = "pipeline.summarizer:main"
-kg-categorize = "pipeline.categorizer:main"
+kg-summarize = "src.summarize.summarize_endpoint:main"
+kg-categorize = "src.categorize.categorize_endpoint:main"
 
 [project.optional-dependencies]
 dev = [

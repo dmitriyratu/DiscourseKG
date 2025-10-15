@@ -5,45 +5,54 @@ Simple persistence utilities for saving pipeline data.
 from pathlib import Path
 import json
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from src.app_config import config
 from src.shared.logging_utils import get_logger
+from src.pipeline_config import PipelineStages
 
 logger = get_logger(__name__)
 
 
-def save_data(item_id: str, data: Any, data_type: str) -> str:
+def save_data(id: str, data: Any, data_type: str, speaker: Optional[str] = None, content_type: Optional[str] = None) -> str:
     """
-    Save data with timestamp and automatic subdirectory.
+    Save data with speaker and content-type organized directory structure.
+    
+    Directory structure: {environment}/{speaker}/{data_type}/{content_type}/{id}_{timestamp}.json
     
     Args:
-        item_id: Unique identifier for the item
-        data: Data to save
-        data_type: Type of data (e.g., 'raw', 'summary', 'categorization')
+        id: Unique identifier for the data item
+        data: Data to save (dict or any serializable object)
+        data_type: Pipeline stage type (scrape, summarize, categorize)
+        speaker: Speaker name (extracted from data if not provided)
+        content_type: Content type (speech, debate, interview, etc.)
         
     Returns:
-        Path to saved file
+        Path to the saved file
     """
-    # Generate timestamp and filename
+    # Use DATA_ROOT as base path
+    base_path = config.DATA_ROOT
+    
+    # Generate file path with speaker/content-type structure
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{data_type}_{item_id}_{timestamp}.json"
     
-    # Auto-generate subdirectory from data_type
-    subdirectories = {
-        'summary': 'summaries',
-        'categorization': 'categories', 
-        'raw': 'test'
-    }
-    subdirectory = subdirectories[data_type]
+    # Extract metadata - use provided content_type or fallback to data
+    if not content_type:
+        content_type = data.get('type', 'unknown') if isinstance(data, dict) else 'unknown'
     
-    # Build file path
-    base_path = config.RAW_DATA_PATH if data_type == 'raw' else config.PROCESSED_DATA_PATH
-    file_path = Path(base_path) / subdirectory / filename
+    # Get speaker from parameter or extract from data
+    if not speaker and isinstance(data, dict):
+        speakers = data.get('speakers', [])
+        speaker = speakers[0] if speakers else 'unknown'
     
-    # Create parent directories and save
+    speaker = speaker or 'unknown'
+    
+    # Create path: {environment}/{speaker}/{data_type}/{content_type}/
+    filename = f"{id}_{timestamp}.json"
+    file_path = Path(base_path) / config.ENVIRONMENT / speaker / data_type / content_type / filename
+    
+    # Save file
     file_path.parent.mkdir(parents=True, exist_ok=True)
-    
     with open(file_path, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
     

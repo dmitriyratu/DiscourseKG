@@ -1,10 +1,9 @@
 from prefect import flow, task
 from typing import Dict, Any
-from src.pipeline_config import pipeline_stages
+from src.pipeline_config import pipeline_stages, PipelineStages
 from src.shared.flow_processor import FlowProcessor
 from src.shared.logging_utils import get_logger
-from src.processing.categorize_endpoint import CategorizeEndpoint
-from src.app_config import config
+from src.categorize.categorize_endpoint import CategorizeEndpoint
 
 logger = get_logger(__name__)
 
@@ -23,11 +22,11 @@ def categorize_item(item: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @flow
-def processing_flow():
+def categorize_flow():
     """Process items through categorization stage."""
-    processor = FlowProcessor("processing_flow")
+    processor = FlowProcessor("categorize_flow")
     processor.process_items(
         stage=pipeline_stages.CATEGORIZE,
         task_func=categorize_item,
-        data_type='categorization'
+        data_type=PipelineStages.CATEGORIZE
     )

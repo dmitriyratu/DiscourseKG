@@ -4,7 +4,6 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from pydantic import BaseModel, Field
-import json
 
 from src.app_config import config
 from src.schemas import (
@@ -116,32 +115,29 @@ Return structured JSON with categories containing entities and their supporting 
             Dictionary containing categorization results
         """
         transcript = content_data.get('transcript', '')
-        title = content_data.get('title', '')
-        speakers = content_data.get('speakers', [])
-        date = content_data.get('date', '')
+        title = content_data.get('title', 'Unknown')
+        speakers = content_data.get('speakers', ['Unknown'])
+        date = content_data.get('date', 'Unknown')
         
         if not transcript:
             raise ValueError("No transcript found in content data")
         
         try:
             logger.info(f"Starting categorization for content: {content_data.get('id', 'unknown')}")
-            logger.debug(f"Processing transcript length: {len(transcript)} characters")
             
-            # Run the chain
+            # Run the chain with all required fields
             result = self.chain.invoke({
+                "content": transcript[:config.MAX_TRANSCRIPT_LENGTH],
                 "title": title,
-                "speakers": ", ".join(speakers),
-                "date": date,
-                "content": transcript[:config.MAX_TRANSCRIPT_LENGTH]
+                "speakers": speakers,
+                "date": date
             })
             
             # Convert to dict and add metadata
             output = result.dict()
+            output['id'] = content_data.get('id', 'unknown')
             output['metadata'] = {
-                'model_used': config.OPENAI_MODEL,
-                'id': content_data.get('id', ''),
-                'categorization_date': date,
-                'speakers': speakers
+                'model_used': config.OPENAI_MODEL
             }
             
             

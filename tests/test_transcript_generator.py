@@ -15,46 +15,54 @@ with open(TEMPLATES_PATH, 'r', encoding='utf-8') as f:
     TRANSCRIPT_TEMPLATES = json.load(f)
 
 
-def generate_test_transcript(index: int):
-    """Generate test transcript data structure (no file I/O)."""
+def generate_test_transcript(index: int, content_type: str = "speech") -> dict:
+    """
+    Generate a test transcript with realistic content.
     
-    # Generate test data
-    test_types = ["speech", "interview", "debate"]
-    test_type = test_types[index % len(test_types)]
+    Args:
+        index: Index number for the transcript
+        content_type: Type of content (speech, debate, interview)
     
-    # Create realistic test transcript
-    transcript_content = generate_transcript_text(test_type, index)
+    Returns:
+        Dictionary containing transcript data
+    """
+    # Generate unique ID
+    id = f"test-{content_type}-{index}-{uuid.uuid4().hex[:8]}"
     
-    # Generate metadata
+    # Generate timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Generate date (recent)
     date = (datetime.now() - timedelta(days=index)).strftime("%Y-%m-%d")
-    year, month, day = date.split("-")
     
-    # Generate unique timestamp for this run
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:19]
+    # Generate source URL
+    source_url = f"https://example.com/test/{content_type}_{index}_{timestamp}"
     
-    # Unique URL per run
-    source_url = f"https://example.com/test/{test_type}_{index}_{timestamp}"
-    
-    # Generate ID
-    id = str(uuid.uuid4())
+    # Generate transcript content
+    transcript_content = generate_transcript_text(content_type, index)
     
     # Return structured data (no file I/O)
     return {
         "id": id,
-        "title": f"Test {test_type.title()} #{index} ({timestamp})",
+        "title": f"Test {content_type.title()} #{index} ({timestamp})",
         "date": date,
         "event_date": date,
-        "type": test_type,
+        "type": content_type,
         "source_url": source_url,
         "location": "Test Location",
         "main_subject": "Test Speaker",
-        "transcript": transcript_content,
         "speakers": ["Test Speaker"],
-        "timestamp": timestamp
+        "timestamp": timestamp,
+        "transcript": transcript_content
     }
 
 
 def generate_transcript_text(content_type: str, index: int) -> str:
     """Generate realistic test transcript content from templates."""
     template = TRANSCRIPT_TEMPLATES.get(content_type, TRANSCRIPT_TEMPLATES["speech"])
-    return template.format(index=index)
+    
+    # Get the full template content and replace placeholders
+    base_content = template.get("content", "This is a test transcript.")
+    base_content = base_content.format(index=index)  # Replace {index} placeholder
+    
+    return base_content

@@ -40,30 +40,30 @@ class ExtractiveSummarizer:
         self.tokenizer = tiktoken.get_encoding(config.SUMMARIZER_TOKENIZER)
         self.model = SentenceTransformer(config.SUMMARIZER_MODEL)
     
-    def summarize(self, text: str, target_tokens: int) -> dict:
+    def summarize(self, id: str, text: str, target_tokens: int) -> dict:
         """Summarize text to target token count using extractive methods."""
         start_time = time.time()
         original_tokens = len(self.tokenizer.encode(text))
         
         try:
             if not text or not text.strip():
-                return self._create_result(text, "", 0, 0.0, start_time, target_tokens, False, "Empty input")
+                return self._create_result(id, text, "", 0, 0.0, start_time, target_tokens, False, "Empty input")
             
             summary_text = text if original_tokens <= target_tokens else self._do_summarization(text, target_tokens)
             summary_tokens = len(self.tokenizer.encode(summary_text))
             compression_ratio = len(summary_text) / len(text) if text else 0.0
             
-            return self._create_result(text, summary_text, summary_tokens, compression_ratio, start_time, target_tokens, True)
+            return self._create_result(id, text, summary_text, summary_tokens, compression_ratio, start_time, target_tokens, True)
             
         except Exception as e:
-            return self._create_result(text, text, original_tokens, 1.0, start_time, target_tokens, False, str(e))
+            return self._create_result(id, text, text, original_tokens, 1.0, start_time, target_tokens, False, str(e))
     
-    def _create_result(self, original: str, summary: str, summary_tokens: int, compression: float, 
+    def _create_result(self, id: str, original: str, summary: str, summary_tokens: int, compression: float, 
                       start_time: float, target_tokens: int, success: bool, error: str = None) -> dict:
         """Helper to create SummarizationResult with consistent timing."""
         result = SummarizationResult(
+            id=id,
             summary=summary,
-            original_text=original,
             original_word_count=len(original.split()),
             summary_word_count=len(summary.split()),
             compression_ratio=compression,

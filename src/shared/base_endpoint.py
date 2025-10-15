@@ -29,21 +29,21 @@ class BaseEndpoint(ABC):
         """
         pass
     
-    def _create_success_response(self, item_id: str, result: Any, stage: str, input_data: Any = None) -> Dict[str, Any]:
+    def _create_success_response(self, id: str, result: Any, stage: str, input_data: Any = None) -> Dict[str, Any]:
         """Create standardized success response."""
         return {
             'success': True,
-            'item_id': item_id,
+            'id': id,
             'stage': stage,
             'result': result,
             'input_data': input_data
         }
     
-    def _create_error_response(self, item_id: str, stage: str, error: str) -> Dict[str, Any]:
+    def _create_error_response(self, id: str, stage: str, error: str) -> Dict[str, Any]:
         """Create standardized error response."""
         return {
             'success': False,
-            'item_id': item_id,
+            'id': id,
             'stage': stage,
             'error': error
         }

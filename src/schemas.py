@@ -5,7 +5,7 @@ This module defines the core data structures used throughout the KG-Sentiment pl
 for categorizing political communications, extracting entities, and analyzing sentiment.
 """
 
-from pydantic import BaseModel, Field, constr
+from pydantic import BaseModel, Field
 from enum import Enum
 from typing import Optional, List
 
@@ -61,10 +61,6 @@ class SentimentLevel(str, Enum):
         return obj
 
 
-
-
-
-
 # ============================================================================
 # PYDANTIC MODELS - Core Data Structures
 # ============================================================================
@@ -72,8 +68,10 @@ class SentimentLevel(str, Enum):
 class EntityMention(BaseModel):
     """Single entity mentioned in communication"""
     
-    entity_name: constr(min_length=1, max_length=200, strip_whitespace=True) = Field(
+    entity_name: str = Field(
         ..., 
+        min_length=1, 
+        max_length=200,
         description="Canonical/standard name for this entity (e.g., 'Apple', 'China', 'Joe Biden')"
     )
     
@@ -81,8 +79,10 @@ class EntityMention(BaseModel):
     
     sentiment: SentimentLevel = Field(..., description="Speaker's feeling toward entity")
     
-    context: constr(min_length=10, max_length=500, strip_whitespace=True) = Field(
+    context: str = Field(
         ..., 
+        min_length=10, 
+        max_length=500,
         description="Summary of how this entity was discussed"
     )
     
@@ -106,8 +106,8 @@ class CategorizationOutput(BaseModel):
 class SummarizationResult(BaseModel):
     """Result of summarization operation with metrics and metadata."""
     
+    id: str = Field(..., description="Unique identifier for the summarized content")
     summary: str = Field(..., description="The summarized text")
-    original_text: str = Field(..., description="The original text that was summarized")
     original_word_count: int = Field(..., description="Word count of original text")
     summary_word_count: int = Field(..., description="Word count of summary")
     compression_ratio: float = Field(..., description="Ratio of summary length to original length")

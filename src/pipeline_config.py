@@ -4,7 +4,6 @@ Pipeline configuration for KG-Sentiment platform.
 Defines the pipeline stages and flow
 """
 
-from dataclasses import dataclass
 from typing import Optional
 from enum import Enum
 
@@ -18,10 +17,9 @@ class PipelineStageStatus(str, Enum):
     INVALIDATED = "INVALIDATED"
 
 
-@dataclass
 class PipelineStages:
-    """Pipeline stage definitions"""
-    RAW = "raw"
+    """Pipeline stage definitions - values match directory names"""
+    SCRAPE = "scrape"
     SUMMARIZE = "summarize" 
     CATEGORIZE = "categorize"
 
@@ -31,7 +29,7 @@ class PipelineConfig:
     
     # Define stage flow (what comes after each stage)
     STAGE_FLOW = {
-        PipelineStages.RAW: PipelineStages.SUMMARIZE,
+        PipelineStages.SCRAPE: PipelineStages.SUMMARIZE,
         PipelineStages.SUMMARIZE: PipelineStages.CATEGORIZE, 
         PipelineStages.CATEGORIZE: None  # Pipeline complete
     }

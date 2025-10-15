@@ -3,12 +3,11 @@ Categorize endpoint for processing summarized content.
 """
 
 from typing import Dict, Any
-from pathlib import Path
 
 from src.shared.base_endpoint import BaseEndpoint
-from src.shared.data_loaders import SummaryDataLoader
-from src.processing.pipeline import process_content
-from src.app_config import config
+from src.shared.data_loaders import SummaryDataLoader, RawDataLoader
+from src.categorize.pipeline import process_content
+from src.pipeline_config import PipelineStages
 
 
 class CategorizeEndpoint(BaseEndpoint):
@@ -22,21 +21,27 @@ class CategorizeEndpoint(BaseEndpoint):
         try:
             self.logger.info(f"Categorizing item: {item['id']}")
             
-            # Load summary data
+            # Load summary data with metadata
             summary_loader = SummaryDataLoader()
+            speaker = item.get('speaker')
+            content_type = item.get('content_type')
             summary_data = summary_loader.load(item['id'])
             
             # Validate summary content
             if not summary_data.summary_text or not summary_data.summary_text.strip():
                 raise ValueError("Empty or invalid summary content")
             
-            # Create input structure for categorization
+            # Load raw data to get metadata (title, speakers, date)
+            raw_loader = RawDataLoader()
+            raw_data = raw_loader.load(item['raw_file_path'])
+            
+            # Create input structure for categorization with all required fields
             categorization_input = {
-                "id": summary_data.id,
+                "id": item['id'],
                 "transcript": summary_data.summary_text,
-                "title": f"Summary for {summary_data.id}",
-                "speakers": ["Unknown"],  # TODO: Extract from original data
-                "date": summary_data.processed_at or "2025-01-01"  # TODO: Fix missing date handling
+                "title": raw_data.title,
+                "speakers": raw_data.speakers,
+                "date": raw_data.date
             }
             
             # Process through categorization
@@ -45,16 +50,15 @@ class CategorizeEndpoint(BaseEndpoint):
             self.logger.info(f"Successfully categorized item {item['id']}")
             
             return self._create_success_response(
-                item_id=item['id'],
+                id=item['id'],
                 result=result,
-                stage='categorize',
-                input_data=summary_data
+                stage=PipelineStages.CATEGORIZE
             )
             
         except Exception as e:
             self.logger.error(f"Categorization failed for item {item['id']}: {str(e)}")
             return self._create_error_response(
-                item_id=item['id'],
-                stage='categorize',
+                id=item['id'],
+                stage=PipelineStages.CATEGORIZE,
                 error=str(e)
             )

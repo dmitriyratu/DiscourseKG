@@ -27,6 +27,10 @@ class PipelineState(BaseModel):
     raw_file_path: Optional[str] = Field(None, description="Path to raw JSON file (relative to project root)")
     source_url: Optional[str] = Field(None, description="Original source URL (for deduplication and audit trail)")
     
+    # Content metadata
+    speaker: Optional[str] = Field(None, description="Primary speaker name")
+    content_type: Optional[str] = Field(None, description="Type of content (speech, debate, interview, etc.)")
+    
     # Simple stage tracking
     latest_completed_stage: Optional[str] = Field(None, description="Latest successfully completed stage (None, 'raw', 'summarize', 'categorize')")
     next_stage: Optional[str] = Field(..., description="Next stage that needs to be processed")
@@ -49,7 +53,7 @@ class PipelineStateManager:
         self.state_file_path.parent.mkdir(parents=True, exist_ok=True)
     
     def create_state(self, data_point_id: str, scrape_cycle: str, raw_file_path: str = None, 
-                    source_url: str = None) -> PipelineState:
+                    source_url: str = None, speaker: str = None, content_type: str = None) -> PipelineState:
         """Create a new pipeline state for a data point"""
         now = datetime.now().isoformat()
         
@@ -58,7 +62,9 @@ class PipelineStateManager:
             scrape_cycle=scrape_cycle,
             raw_file_path=raw_file_path,
             source_url=source_url,
-            latest_completed_stage=pipeline_stages.RAW,
+            speaker=speaker,
+            content_type=content_type,
+            latest_completed_stage=pipeline_stages.SCRAPE,
             next_stage=pipeline_config.FIRST_PROCESSING_STAGE,
             created_at=now,
             updated_at=now

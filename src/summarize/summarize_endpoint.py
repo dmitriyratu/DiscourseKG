@@ -3,12 +3,12 @@ Summarize endpoint for processing raw transcripts.
 """
 
 from typing import Dict, Any
-from pathlib import Path
 
 from src.shared.base_endpoint import BaseEndpoint
 from src.shared.data_loaders import RawDataLoader
-from src.preprocessing.pipeline import preprocess_content
+from src.summarize.pipeline import preprocess_content
 from src.app_config import config
+from src.pipeline_config import PipelineStages
 
 
 class SummarizeEndpoint(BaseEndpoint):
@@ -31,7 +31,7 @@ class SummarizeEndpoint(BaseEndpoint):
                 raise ValueError("Empty or invalid transcript content")
             
             # Process through summarization
-            result = preprocess_content(raw_data.transcript, config.TARGET_SUMMARY_TOKENS)
+            result = preprocess_content(item['id'], raw_data.transcript, config.TARGET_SUMMARY_TOKENS)
             
             if not result['success']:
                 raise ValueError(f"Summarization failed: {result['error_message']}")
@@ -39,16 +39,15 @@ class SummarizeEndpoint(BaseEndpoint):
             self.logger.info(f"Successfully summarized item {item['id']} - {result['summary_word_count']} words")
             
             return self._create_success_response(
-                item_id=item['id'],
+                id=item['id'],
                 result=result,
-                stage='summarize',
-                input_data=raw_data
+                stage=PipelineStages.SUMMARIZE
             )
             
         except Exception as e:
             self.logger.error(f"Summarization failed for item {item['id']}: {str(e)}")
             return self._create_error_response(
-                item_id=item['id'],
-                stage='summarize',
+                id=item['id'],
+                stage=PipelineStages.SUMMARIZE,
                 error=str(e)
             )
