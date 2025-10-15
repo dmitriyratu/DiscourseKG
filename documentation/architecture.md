@@ -22,10 +22,12 @@ KG-Sentiment/
 │   │   └── scrape_endpoint.py    # Web scraping endpoint
 │   ├── preprocessing/            # Data preprocessing layer
 │   │   ├── summarize_endpoint.py # Summarization endpoint
-│   │   └── extractive_summarizer.py # Core summarization logic
+│   │   ├── extractive_summarizer.py # Core summarization logic
+│   │   └── pipeline.py           # Summarization pipeline
 │   ├── processing/               # Content processing layer
 │   │   ├── categorize_endpoint.py # Categorization endpoint
-│   │   └── content_categorizer.py # Core categorization logic
+│   │   ├── content_categorizer.py # Core categorization logic
+│   │   └── pipeline.py           # Categorization pipeline
 │   ├── schemas.py                # Pydantic data models
 │   ├── pipeline_config.py        # Pipeline stage definitions
 │   └── app_config.py             # Application configuration
@@ -35,6 +37,9 @@ KG-Sentiment/
 │   └── processing_flow.py       # Categorization flow orchestration
 ├── tasks/                        # Task definitions
 │   └── orchestration.py         # Orchestration utilities
+├── tests/                        # Test utilities and fixtures
+│   ├── test_transcript_generator.py # Mock data generation
+│   └── fixtures/                 # Test data fixtures
 ├── data/                         # Data storage
 │   ├── raw/                      # Raw scraped data
 │   ├── processed/                # Processed data outputs
@@ -65,6 +70,8 @@ graph TB
     subgraph "Processing Layer"
         ES[ExtractiveSummarizer]
         CC[ContentCategorizer]
+        SP[SummarizationPipeline]
+        CP[CategorizationPipeline]
         LLM[LangChain/OpenAI]
     end
     
@@ -91,8 +98,10 @@ graph TB
     SME --> BE
     CE --> BE
     
-    SME --> ES
-    CE --> CC
+    SME --> SP
+    SP --> ES
+    CE --> CP
+    CP --> CC
     CC --> LLM
     
     PS --> SS
@@ -108,7 +117,7 @@ graph TB
     
     class SF,PF,CF,FP orchestration
     class SE,SME,CE,BE endpoint
-    class ES,CC,LLM processing
+    class ES,CC,SP,CP,LLM processing
     class PS,PD,LU,DL infrastructure
     class FS,LS,SS storage
 ```
@@ -305,6 +314,39 @@ classDiagram
     BaseEndpoint <|-- CategorizeEndpoint
 ```
 
+### Flow Architecture
+
+The system uses `FlowProcessor` to eliminate code duplication across flows:
+
+```mermaid
+classDiagram
+    class FlowProcessor {
+        +flow_name: str
+        +logger: Logger
+        +process_items(stage: str, task_func: Callable, data_type: str)
+        -_handle_result() void
+    }
+    
+    class ScrapeFlow {
+        +scrape_item() Task
+        +scrape_flow() Flow
+    }
+    
+    class PreprocessingFlow {
+        +summarize_item() Task
+        +preprocessing_flow() Flow
+    }
+    
+    class ProcessingFlow {
+        +categorize_item() Task
+        +processing_flow() Flow
+    }
+    
+    FlowProcessor --> ScrapeFlow : uses
+    FlowProcessor --> PreprocessingFlow : uses
+    FlowProcessor --> ProcessingFlow : uses
+```
+
 ## Complete Workflow Example
 
 A typical end-to-end processing flow demonstrates how data moves through the system, from initial scraping through final categorization.
@@ -330,20 +372,42 @@ sequenceDiagram
     ScrapeFlow->>StateManager: create_state(item_id, scrape_cycle)
     
     User->>PreprocessingFlow: preprocessing_flow()
-    PreprocessingFlow->>StateManager: get_next_stage_tasks('summarize')
-    StateManager-->>PreprocessingFlow: Items to process
-    PreprocessingFlow->>SummarizeEndpoint: execute(item)
-    SummarizeEndpoint-->>PreprocessingFlow: Success Response
-    PreprocessingFlow->>FileSystem: save_data(item_id, summary_data, 'summary')
-    PreprocessingFlow->>StateManager: update_stage_status(item_id, 'summarize', COMPLETED)
+    PreprocessingFlow->>FlowProcessor: process_items('summarize', summarize_item, 'summary')
+    FlowProcessor->>StateManager: get_next_stage_tasks('summarize')
+    StateManager-->>FlowProcessor: Items to process
+    FlowProcessor->>SummarizeEndpoint: execute(item)
+    SummarizeEndpoint-->>FlowProcessor: Success Response
+    FlowProcessor->>FileSystem: save_data(item_id, summary_data, 'summary')
+    FlowProcessor->>StateManager: update_stage_status(item_id, 'summarize', COMPLETED)
     
     User->>ProcessingFlow: processing_flow()
-    ProcessingFlow->>StateManager: get_next_stage_tasks('categorize')
-    StateManager-->>ProcessingFlow: Items to process
-    ProcessingFlow->>CategorizeEndpoint: execute(item)
-    CategorizeEndpoint-->>ProcessingFlow: Success Response
-    ProcessingFlow->>FileSystem: save_data(item_id, categorization_data, 'categorization')
-    ProcessingFlow->>StateManager: update_stage_status(item_id, 'categorize', COMPLETED)
+    ProcessingFlow->>FlowProcessor: process_items('categorize', categorize_item, 'categorization')
+    FlowProcessor->>StateManager: get_next_stage_tasks('categorize')
+    StateManager-->>FlowProcessor: Items to process
+    FlowProcessor->>CategorizeEndpoint: execute(item)
+    CategorizeEndpoint-->>FlowProcessor: Success Response
+    FlowProcessor->>FileSystem: save_data(item_id, categorization_data, 'categorization')
+    FlowProcessor->>StateManager: update_stage_status(item_id, 'categorize', COMPLETED)
+```
+
+## Data Flow & Serialization
+
+The system handles Pydantic model serialization at the point of creation to ensure JSON compatibility throughout the pipeline:
+
+```mermaid
+flowchart LR
+    A[Pydantic Model Creation] --> B[model_dump() Conversion]
+    B --> C[Dictionary Storage]
+    C --> D[JSON Serialization]
+    D --> E[File Persistence]
+    
+    F[ExtractiveSummarizer._create_result] --> B
+    G[ContentCategorizer.categorize_content] --> B
+    H[BaseEndpoint Response] --> C
+    
+    style B fill:#e8f5e8
+    style C fill:#e1f5fe
+    style D fill:#fff3e0
 ```
 
 ## Technology Stack & Design Patterns
@@ -368,6 +432,7 @@ sequenceDiagram
 - **Strategy Pattern**: Different processing strategies per stage
 - **Observer Pattern**: State management tracks progress across stages
 - **Factory Pattern**: FlowProcessor creates standardized processing flows
+- **Singleton Pattern**: Centralized configuration and logging
 
 ### Key Architectural Principles
 
@@ -376,7 +441,18 @@ sequenceDiagram
 3. **Error Resilience**: Comprehensive error handling with retry mechanisms
 4. **State-Driven Processing**: Resumable workflows with progress tracking
 5. **Configuration Management**: Centralized configuration with environment variables
-6. **Logging Consistency**: Unified logging across all components
+6. **Logging Consistency**: Unified logging across all components with module-level loggers
 7. **Type Safety**: Pydantic models ensure data integrity throughout the pipeline
+8. **Code Deduplication**: FlowProcessor eliminates boilerplate across flows
+9. **Serialization at Source**: Pydantic models converted to dicts at creation time
+
+### Recent Architectural Improvements
+
+1. **✅ Standardized Endpoint Architecture**: All endpoints inherit from `BaseEndpoint` with consistent interfaces
+2. **✅ FlowProcessor Pattern**: Eliminated code duplication across preprocessing and processing flows
+3. **✅ Consolidated Logging**: Single `get_logger()` function with module-level loggers
+4. **✅ Pydantic Serialization Fix**: Models converted to dicts at creation time for JSON compatibility
+5. **✅ Configuration Cleanup**: Moved implementation-specific constants back to their respective modules
+6. **✅ State-Driven Pipeline**: Centralized state management with resumable processing
 
 This architecture provides a robust, scalable foundation for political communication analysis while maintaining clean code principles and operational excellence.
