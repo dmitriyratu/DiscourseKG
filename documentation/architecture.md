@@ -126,12 +126,6 @@ graph TB
 
 The pipeline operates as a state-driven system where each data item progresses through defined stages. The state manager tracks the current stage, status, and metadata for each item, enabling resumable processing and error recovery.
 
-### Pipeline Stages
-
-- **RAW**: Initial data collection stage (scraped content)
-- **SUMMARIZE**: Content summarization using extractive summarization
-- **CATEGORIZE**: Content categorization using LLM-based classification
-
 ### Pipeline State Flow Diagram
 
 ```mermaid
@@ -158,7 +152,7 @@ stateDiagram-v2
 
 The system uses Pydantic models for type safety and validation. The core models define the structure for political communication analysis, including policy domains, entity extraction, and sentiment analysis.
 
-### Core Data Models
+### Data Model Class Diagram
 
 ```mermaid
 classDiagram
@@ -188,28 +182,24 @@ classDiagram
         +POSITIVE
         +NEGATIVE
         +NEUTRAL
-        +MIXED
+        +UNCLEAR
     }
     
     class EntityMention {
-        +name: str
+        +entity_name: str
         +entity_type: EntityType
         +sentiment: SentimentLevel
-        +relevance_score: float
-        +supporting_quotes: List[str]
+        +context: str
+        +quotes: List[str]
     }
     
     class CategoryWithEntities {
-        +policy_domain: PolicyDomain
-        +confidence_score: float
+        +category: str
         +entities: List[EntityMention]
     }
     
     class CategorizationOutput {
-        +primary_category: PolicyDomain
-        +all_categories: List[CategoryWithEntities]
-        +overall_sentiment: SentimentLevel
-        +processing_metadata: dict
+        +categories: List[CategoryWithEntities]
     }
     
     class SummarizationResult {
@@ -229,55 +219,24 @@ classDiagram
         +scrape_cycle: str
         +raw_file_path: Optional[str]
         +source_url: Optional[str]
-        +stages: Dict[str, StageStatus]
+        +latest_completed_stage: Optional[str]
         +next_stage: Optional[str]
         +created_at: str
         +updated_at: str
+        +error_message: Optional[str]
+        +processing_time_seconds: Optional[float]
+        +retry_count: int
     }
     
     CategorizationOutput --> CategoryWithEntities : contains
     CategoryWithEntities --> EntityMention : contains
-    CategoryWithEntities --> PolicyDomain : uses
     EntityMention --> EntityType : uses
     EntityMention --> SentimentLevel : uses
-    CategorizationOutput --> SentimentLevel : uses
 ```
 
 ## Processing Components
 
 The system implements a clean architecture with standardized endpoints that inherit from a common base class. Each endpoint handles a specific stage of the pipeline with consistent error handling and response formatting.
-
-### Component Interaction Diagram
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Flow
-    participant FlowProcessor
-    participant Endpoint
-    participant Processor
-    participant StateManager
-    participant Persistence
-    
-    User->>Flow: Execute Pipeline Stage
-    Flow->>FlowProcessor: process_items(stage, task_func, data_type)
-    FlowProcessor->>StateManager: get_next_stage_tasks(stage)
-    StateManager-->>FlowProcessor: List[PipelineState]
-    
-    loop For each item
-        FlowProcessor->>Endpoint: execute(item)
-        Endpoint->>Processor: process_content(data)
-        Processor-->>Endpoint: Dict[result]
-        Endpoint-->>FlowProcessor: Standardized Response
-        
-        alt Success
-            FlowProcessor->>Persistence: save_data(item_id, result, data_type)
-            FlowProcessor->>StateManager: update_stage_status(item_id, stage, COMPLETED)
-        else Error
-            FlowProcessor->>StateManager: update_stage_status(item_id, stage, FAILED, error)
-        end
-    end
-```
 
 ### Endpoint Architecture
 
@@ -388,26 +347,6 @@ sequenceDiagram
     CategorizeEndpoint-->>FlowProcessor: Success Response
     FlowProcessor->>FileSystem: save_data(item_id, categorization_data, 'categorization')
     FlowProcessor->>StateManager: update_stage_status(item_id, 'categorize', COMPLETED)
-```
-
-## Data Flow & Serialization
-
-The system handles Pydantic model serialization at the point of creation to ensure JSON compatibility throughout the pipeline:
-
-```mermaid
-flowchart LR
-    A[Pydantic Model Creation] --> B[model_dump() Conversion]
-    B --> C[Dictionary Storage]
-    C --> D[JSON Serialization]
-    D --> E[File Persistence]
-    
-    F[ExtractiveSummarizer._create_result] --> B
-    G[ContentCategorizer.categorize_content] --> B
-    H[BaseEndpoint Response] --> C
-    
-    style B fill:#e8f5e8
-    style C fill:#e1f5fe
-    style D fill:#fff3e0
 ```
 
 ## Technology Stack & Design Patterns
