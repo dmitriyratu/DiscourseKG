@@ -8,9 +8,9 @@ from datetime import datetime
 from typing import Any
 
 from src.app_config import config
-from src.shared.logging_utils import setup_logger
+from src.shared.logging_utils import get_logger
 
-logger = setup_logger("persistence", "persistence.log")
+logger = get_logger(__name__)
 
 
 def save_data(item_id: str, data: Any, data_type: str) -> str:

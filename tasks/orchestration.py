@@ -7,9 +7,9 @@ Provides clean task orchestration using stage-specific processors.
 from typing import List, Dict, Any
 
 from src.shared.pipeline_state import PipelineStateManager
-from src.shared.logging_utils import setup_logger
+from src.shared.logging_utils import get_logger
 
-logger = setup_logger("flows_tasks", "flows_tasks.log")
+logger = get_logger(__name__)
 
 
 def get_items(stage: str) -> List[Dict[str, Any]]:

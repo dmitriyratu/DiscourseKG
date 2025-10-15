@@ -12,8 +12,10 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from src.app_config import config
-from src.shared.logging_utils import setup_logger
+from src.shared.logging_utils import get_logger
 from src.pipeline_config import pipeline_config, pipeline_stages, PipelineStageStatus
+
+logger = get_logger(__name__)
 
 
 class PipelineState(BaseModel):
@@ -45,7 +47,6 @@ class PipelineStateManager:
     def __init__(self, state_file_path: str = None):
         self.state_file_path = Path(state_file_path or config.PIPELINE_STATE_FILE)
         self.state_file_path.parent.mkdir(parents=True, exist_ok=True)
-        self.logger = setup_logger("pipeline_state", "pipeline_state.log")
     
     def create_state(self, data_point_id: str, scrape_cycle: str, raw_file_path: str = None, 
                     source_url: str = None) -> PipelineState:
@@ -65,7 +66,7 @@ class PipelineStateManager:
         
         # Append to state file
         self._append_state(state)
-        self.logger.info(f"Created pipeline state for data point: {data_point_id}")
+        logger.info(f"Created pipeline state for data point: {data_point_id}")
         
         return state
     
@@ -125,9 +126,9 @@ class PipelineStateManager:
         if updated:
             # Rewrite the entire file with updated states
             self._write_all_states(states)
-            self.logger.info(f"Updated {stage} status to {status.value} for data point: {data_point_id}")
+            logger.info(f"Updated {stage} status to {status.value} for data point: {data_point_id}")
         else:
-            self.logger.warning(f"Data point not found for update: {data_point_id}")
+            logger.warning(f"Data point not found for update: {data_point_id}")
     
     def get_next_stage_tasks(self, stage: str) -> List[PipelineState]:
         """Get all data points where the next_stage matches the requested stage"""

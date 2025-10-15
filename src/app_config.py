@@ -36,6 +36,13 @@ class Config:
     MAX_TRANSCRIPT_LENGTH: int = 4000  # Characters to send to OpenAI
     BATCH_SIZE: int = 10  # For batch processing
     
+    # Pipeline Configuration
+    TARGET_SUMMARY_TOKENS: int = 1000  # Target token count for summarization
+    
+    # Summarization Configuration
+    SUMMARIZER_MODEL: str = "all-MiniLM-L6-v2"  # Sentence transformer model
+    SUMMARIZER_TOKENIZER: str = "cl100k_base"  # Tiktoken tokenizer
+    
 
 
 # Global config instance

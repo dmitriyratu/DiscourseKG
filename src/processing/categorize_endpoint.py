@@ -5,23 +5,22 @@ Categorize endpoint for processing summarized content.
 from typing import Dict, Any
 from pathlib import Path
 
+from src.shared.base_endpoint import BaseEndpoint
 from src.shared.data_loaders import SummaryDataLoader
 from src.processing.pipeline import process_content
-from src.shared.logging_utils import setup_logger
-
-logger = setup_logger("CategorizeEndpoint", "processing_flow.log")
+from src.app_config import config
 
 
-class CategorizeEndpoint:
+class CategorizeEndpoint(BaseEndpoint):
     """Endpoint for categorizing summarized content."""
     
     def __init__(self):
-        pass
+        super().__init__("CategorizeEndpoint")
     
     def execute(self, item: Dict[str, Any]) -> Dict[str, Any]:
         """Execute the categorization process for a single item."""
         try:
-            logger.info(f"Categorizing item: {item['id']}")
+            self.logger.info(f"Categorizing item: {item['id']}")
             
             # Load summary data
             summary_loader = SummaryDataLoader()
@@ -37,27 +36,25 @@ class CategorizeEndpoint:
                 "transcript": summary_data.summary_text,
                 "title": f"Summary for {summary_data.id}",
                 "speakers": ["Unknown"],  # TODO: Extract from original data
-                "date": summary_data.processed_at or "2025-01-01"
+                "date": summary_data.processed_at or "2025-01-01"  # TODO: Fix missing date handling
             }
             
             # Process through categorization
             result = process_content(categorization_input)
             
-            logger.info(f"Successfully categorized item {item['id']}")
+            self.logger.info(f"Successfully categorized item {item['id']}")
             
-            return {
-                'success': True,
-                'item_id': item['id'],
-                'stage': 'categorize',
-                'result': result,
-                'input_data': summary_data
-            }
+            return self._create_success_response(
+                item_id=item['id'],
+                result=result,
+                stage='categorize',
+                input_data=summary_data
+            )
             
         except Exception as e:
-            logger.error(f"Categorization failed for item {item['id']}: {str(e)}")
-            return {
-                'success': False,
-                'item_id': item['id'],
-                'stage': 'categorize',
-                'error': str(e)
-            }
+            self.logger.error(f"Categorization failed for item {item['id']}: {str(e)}")
+            return self._create_error_response(
+                item_id=item['id'],
+                stage='categorize',
+                error=str(e)
+            )

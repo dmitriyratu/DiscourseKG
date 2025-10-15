@@ -5,23 +5,22 @@ Summarize endpoint for processing raw transcripts.
 from typing import Dict, Any
 from pathlib import Path
 
+from src.shared.base_endpoint import BaseEndpoint
 from src.shared.data_loaders import RawDataLoader
 from src.preprocessing.pipeline import preprocess_content
-from src.shared.logging_utils import setup_logger
-
-logger = setup_logger("SummarizeEndpoint", "preprocessing_flow.log")
+from src.app_config import config
 
 
-class SummarizeEndpoint:
+class SummarizeEndpoint(BaseEndpoint):
     """Endpoint for summarizing raw transcripts."""
     
     def __init__(self):
-        pass
+        super().__init__("SummarizeEndpoint")
     
     def execute(self, item: Dict[str, Any]) -> Dict[str, Any]:
         """Execute the summarization process for a single item."""
         try:
-            logger.info(f"Summarizing item: {item['id']}")
+            self.logger.info(f"Summarizing item: {item['id']}")
             
             # Load raw data
             raw_loader = RawDataLoader()
@@ -32,26 +31,24 @@ class SummarizeEndpoint:
                 raise ValueError("Empty or invalid transcript content")
             
             # Process through summarization
-            result = preprocess_content(raw_data.transcript, 1000)
+            result = preprocess_content(raw_data.transcript, config.TARGET_SUMMARY_TOKENS)
             
-            if not result.success:
-                raise ValueError(f"Summarization failed: {result.error_message}")
+            if not result['success']:
+                raise ValueError(f"Summarization failed: {result['error_message']}")
             
-            logger.info(f"Successfully summarized item {item['id']} - {result.summary_word_count} words")
+            self.logger.info(f"Successfully summarized item {item['id']} - {result['summary_word_count']} words")
             
-            return {
-                'success': True,
-                'item_id': item['id'],
-                'stage': 'summarize',
-                'result': result,
-                'input_data': raw_data
-            }
+            return self._create_success_response(
+                item_id=item['id'],
+                result=result,
+                stage='summarize',
+                input_data=raw_data
+            )
             
         except Exception as e:
-            logger.error(f"Summarization failed for item {item['id']}: {str(e)}")
-            return {
-                'success': False,
-                'item_id': item['id'],
-                'stage': 'summarize',
-                'error': str(e)
-            }
+            self.logger.error(f"Summarization failed for item {item['id']}: {str(e)}")
+            return self._create_error_response(
+                item_id=item['id'],
+                stage='summarize',
+                error=str(e)
+            )

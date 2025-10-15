@@ -2,147 +2,167 @@
 
 ## High-Level System Overview
 
-The KG-Sentiment platform is a state-driven, multi-stage data processing pipeline designed to transform political communications into structured knowledge graphs. The core pattern follows a simple but powerful flow: `RAW → SUMMARIZE → CATEGORIZE → Complete`.
+The KG-Sentiment platform is a state-driven, multi-stage data processing pipeline designed for analyzing political communications. The system follows a clean architecture pattern with clear separation of concerns, standardized interfaces, and robust error handling.
 
-The system uses several key design patterns:
-- **State-driven processing**: Every data point is tracked through pipeline stages
-- **Endpoint pattern**: Each processing stage has dedicated endpoints for clean separation
-- **Flow orchestration**: Prefect workflows coordinate the entire pipeline execution
+The core processing flow follows the pattern: `RAW → SUMMARIZE → CATEGORIZE → Complete`, where each stage is managed through a centralized state system that tracks progress and enables resumable processing.
 
-## Project Structure
+### Project Directory Structure
 
 ```
 KG-Sentiment/
-├── src/                    # Core application code
-│   ├── shared/            # Shared utilities (state management, logging, data loaders)
-│   ├── preprocessing/     # Summarization pipeline components
-│   ├── processing/        # Categorization pipeline components
-│   └── collect/           # Data collection endpoints
-├── flows/                 # Prefect workflow orchestration
-├── tasks/                 # Task utilities and orchestration
-├── data/                  # Raw and processed data storage
-│   ├── raw/               # Original scraped data
-│   ├── processed/         # Summaries and categorizations
-│   └── state/             # Pipeline state tracking
-├── playground/            # Interactive testing notebooks
-└── documentation/         # Architecture and requirements docs
+├── src/                          # Core application code
+│   ├── shared/                   # Shared utilities and base classes
+│   │   ├── base_endpoint.py      # Abstract base for all endpoints
+│   │   ├── flow_processor.py     # Common flow processing patterns
+│   │   ├── logging_utils.py      # Centralized logging setup
+│   │   ├── persistence.py        # Data persistence layer
+│   │   ├── pipeline_state.py     # State management system
+│   │   └── data_loaders.py       # Data loading utilities
+│   ├── collect/                  # Data collection layer
+│   │   └── scrape_endpoint.py    # Web scraping endpoint
+│   ├── preprocessing/            # Data preprocessing layer
+│   │   ├── summarize_endpoint.py # Summarization endpoint
+│   │   └── extractive_summarizer.py # Core summarization logic
+│   ├── processing/               # Content processing layer
+│   │   ├── categorize_endpoint.py # Categorization endpoint
+│   │   └── content_categorizer.py # Core categorization logic
+│   ├── schemas.py                # Pydantic data models
+│   ├── pipeline_config.py        # Pipeline stage definitions
+│   └── app_config.py             # Application configuration
+├── flows/                        # Prefect flow orchestration
+│   ├── scrape_flow.py           # Scraping flow orchestration
+│   ├── preprocessing_flow.py    # Summarization flow orchestration
+│   └── processing_flow.py       # Categorization flow orchestration
+├── tasks/                        # Task definitions
+│   └── orchestration.py         # Orchestration utilities
+├── data/                         # Data storage
+│   ├── raw/                      # Raw scraped data
+│   ├── processed/                # Processed data outputs
+│   ├── outputs/                  # Final analysis outputs
+│   └── state/                    # Pipeline state files
+├── logs/                         # Application logs
+└── playground/                   # Interactive testing notebooks
 ```
 
-## System Architecture
-
-The platform is organized into four main layers that work together to process political communications:
+### System Architecture Diagram
 
 ```mermaid
 graph TB
     subgraph "Orchestration Layer"
-        ORCH["tasks/orchestration.py<br/>get_items()"]
-        FLOW1["flows/scrape_flow.py"]
-        FLOW2["flows/preprocessing_flow.py"]
-        FLOW3["flows/processing_flow.py"]
+        SF[ScrapeFlow]
+        PF[PreprocessingFlow] 
+        CF[ProcessingFlow]
+        FP[FlowProcessor]
     end
     
-    subgraph "Pipeline Layer"
-        STATE["src/shared/pipeline_state.py<br/>PipelineStateManager"]
-        CONFIG["src/pipeline_config.py<br/>PipelineConfig"]
+    subgraph "Endpoint Layer"
+        SE[ScrapeEndpoint]
+        SME[SummarizeEndpoint]
+        CE[CategorizeEndpoint]
+        BE[BaseEndpoint]
     end
     
     subgraph "Processing Layer"
-        SCRAPE["src/collect/scrape_endpoint.py<br/>ScrapeEndpoint"]
-        SUMMARIZE["src/preprocessing/summarize_endpoint.py<br/>SummarizeEndpoint"]
-        CATEGORIZE["src/processing/categorize_endpoint.py<br/>CategorizeEndpoint"]
-        LOADERS["src/shared/data_loaders.py<br/>RawDataLoader, SummaryDataLoader"]
+        ES[ExtractiveSummarizer]
+        CC[ContentCategorizer]
+        LLM[LangChain/OpenAI]
+    end
+    
+    subgraph "Infrastructure Layer"
+        PS[PipelineStateManager]
+        PD[PersistenceLayer]
+        LU[LoggingUtils]
+        DL[DataLoaders]
     end
     
     subgraph "Storage Layer"
-        PERSIST["src/shared/persistence.py<br/>save_data()"]
-        DATA[("data/ directory<br/>JSON files")]
+        FS[("File System")]
+        LS[("Logs")]
+        SS[("State Files")]
     end
     
-    ORCH --> STATE
-    FLOW1 --> SCRAPE
-    FLOW2 --> SUMMARIZE
-    FLOW3 --> CATEGORIZE
-    SCRAPE --> PERSIST
-    SUMMARIZE --> LOADERS
-    CATEGORIZE --> LOADERS
-    PERSIST --> DATA
+    SF --> SE
+    PF --> SME
+    CF --> CE
+    FP --> PS
+    FP --> PD
+    
+    SE --> BE
+    SME --> BE
+    CE --> BE
+    
+    SME --> ES
+    CE --> CC
+    CC --> LLM
+    
+    PS --> SS
+    PD --> FS
+    LU --> LS
+    DL --> FS
+    
+    classDef orchestration fill:#e1f5fe
+    classDef endpoint fill:#f3e5f5
+    classDef processing fill:#e8f5e8
+    classDef infrastructure fill:#fff3e0
+    classDef storage fill:#fce4ec
+    
+    class SF,PF,CF,FP orchestration
+    class SE,SME,CE,BE endpoint
+    class ES,CC,LLM processing
+    class PS,PD,LU,DL infrastructure
+    class FS,LS,SS storage
 ```
 
 ## Pipeline Flow & State Management
 
-The pipeline operates on a simple but effective state-driven model. Each data point progresses through three main stages: RAW (data collected), SUMMARIZE (content condensed), and CATEGORIZE (entities and sentiment extracted).
+The pipeline operates as a state-driven system where each data item progresses through defined stages. The state manager tracks the current stage, status, and metadata for each item, enabling resumable processing and error recovery.
 
-The `PipelineStateManager` tracks every item's journey through these stages, maintaining state in a JSONL file that enables reliable processing, failure recovery, and progress monitoring.
+### Pipeline Stages
 
-## Pipeline State Flow
+- **RAW**: Initial data collection stage (scraped content)
+- **SUMMARIZE**: Content summarization using extractive summarization
+- **CATEGORIZE**: Content categorization using LLM-based classification
+
+### Pipeline State Flow Diagram
 
 ```mermaid
 stateDiagram-v2
-    [*] --> RAW: Data scraped
-    RAW --> SUMMARIZE: Raw data available
-    SUMMARIZE --> CATEGORIZE: Summary generated
-    CATEGORIZE --> [*]: Processing complete
+    [*] --> RAW: Data Scraped
+    RAW --> SUMMARIZE: Scraping Complete
+    SUMMARIZE --> CATEGORIZE: Summarization Complete
+    CATEGORIZE --> [*]: Processing Complete
     
-    note right of RAW
-        Initial state after scraping
-        Raw transcript data saved
-    end note
+    RAW --> RAW_FAILED: Scraping Error
+    SUMMARIZE --> SUMMARIZE_FAILED: Summarization Error
+    CATEGORIZE --> CATEGORIZE_FAILED: Categorization Error
     
-    note right of SUMMARIZE
-        Content condensed to target tokens
-        Summary saved to processed/summaries/
-    end note
+    RAW_FAILED --> RAW: Retry
+    SUMMARIZE_FAILED --> SUMMARIZE: Retry
+    CATEGORIZE_FAILED --> CATEGORIZE: Retry
     
-    note right of CATEGORIZE
-        Entities and sentiment extracted
-        Structured output saved to processed/categories/
-    end note
+    note right of RAW: Scrape content from URLs<br/>Generate mock transcripts<br/>Save raw JSON files
+    note right of SUMMARIZE: Extract key sentences<br/>Compress to target length<br/>Save summary JSON
+    note right of CATEGORIZE: Classify policy domains<br/>Extract entities<br/>Analyze sentiment
 ```
 
 ## Data Models & Relationships
 
-The platform uses a clean separation between domain models and infrastructure models. Domain models define the business logic for political communication analysis, while infrastructure models handle pipeline state and processing results.
+The system uses Pydantic models for type safety and validation. The core models define the structure for political communication analysis, including policy domains, entity extraction, and sentiment analysis.
 
-The core domain models include `EntityMention` for individual entities, `CategoryWithEntities` for grouping, and `CategorizationOutput` for the complete analysis result. Processing results are captured in `SummarizationResult` with comprehensive metrics.
-
-## Data Model Relationships
+### Core Data Models
 
 ```mermaid
 classDiagram
-    class EntityMention {
-        +String entity_name
-        +EntityType entity_type
-        +SentimentLevel sentiment
-        +String context
-        +List~String~ quotes
-    }
-    
-    class CategoryWithEntities {
-        +String category
-        +List~EntityMention~ entities
-    }
-    
-    class CategorizationOutput {
-        +List~CategoryWithEntities~ categories
-    }
-    
-    class SummarizationResult {
-        +String summary
-        +String original_text
-        +Int original_word_count
-        +Int summary_word_count
-        +Float compression_ratio
-        +Float processing_time_seconds
-        +Bool success
-        +String error_message
-    }
-    
     class PolicyDomain {
         <<enumeration>>
         +ECONOMIC_POLICY
         +TECHNOLOGY_POLICY
         +FOREIGN_RELATIONS
         +HEALTHCARE_POLICY
+        +ENERGY_POLICY
+        +DEFENSE_POLICY
+        +SOCIAL_POLICY
+        +REGULATORY_POLICY
     }
     
     class EntityType {
@@ -151,6 +171,7 @@ classDiagram
         +COUNTRY
         +PERSON
         +POLICY_TOOL
+        +OTHER
     }
     
     class SentimentLevel {
@@ -158,63 +179,137 @@ classDiagram
         +POSITIVE
         +NEGATIVE
         +NEUTRAL
-        +UNCLEAR
+        +MIXED
     }
     
-    CategoryWithEntities --> EntityMention : contains
+    class EntityMention {
+        +name: str
+        +entity_type: EntityType
+        +sentiment: SentimentLevel
+        +relevance_score: float
+        +supporting_quotes: List[str]
+    }
+    
+    class CategoryWithEntities {
+        +policy_domain: PolicyDomain
+        +confidence_score: float
+        +entities: List[EntityMention]
+    }
+    
+    class CategorizationOutput {
+        +primary_category: PolicyDomain
+        +all_categories: List[CategoryWithEntities]
+        +overall_sentiment: SentimentLevel
+        +processing_metadata: dict
+    }
+    
+    class SummarizationResult {
+        +summary: str
+        +original_text: str
+        +original_word_count: int
+        +summary_word_count: int
+        +compression_ratio: float
+        +processing_time_seconds: float
+        +target_word_count: int
+        +success: bool
+        +error_message: Optional[str]
+    }
+    
+    class PipelineState {
+        +id: str
+        +scrape_cycle: str
+        +raw_file_path: Optional[str]
+        +source_url: Optional[str]
+        +stages: Dict[str, StageStatus]
+        +next_stage: Optional[str]
+        +created_at: str
+        +updated_at: str
+    }
+    
     CategorizationOutput --> CategoryWithEntities : contains
+    CategoryWithEntities --> EntityMention : contains
+    CategoryWithEntities --> PolicyDomain : uses
     EntityMention --> EntityType : uses
     EntityMention --> SentimentLevel : uses
+    CategorizationOutput --> SentimentLevel : uses
 ```
 
 ## Processing Components
 
-Each stage of the pipeline has dedicated endpoints that encapsulate the processing logic. The `ScrapeEndpoint` handles data collection, `SummarizeEndpoint` manages content condensation using extractive summarization, and `CategorizeEndpoint` performs entity extraction and sentiment analysis using LangChain.
+The system implements a clean architecture with standardized endpoints that inherit from a common base class. Each endpoint handles a specific stage of the pipeline with consistent error handling and response formatting.
 
-These endpoints work with specialized data loaders (`RawDataLoader`, `SummaryDataLoader`) to handle data access and validation, while the `save_data()` function provides consistent persistence across all stages.
-
-## Component Interactions
+### Component Interaction Diagram
 
 ```mermaid
-graph LR
-    subgraph "Data Collection"
-        SCRAPE[ScrapeEndpoint.execute()]
-        MOCK[tests/test_transcript_generator.py]
-    end
+sequenceDiagram
+    participant User
+    participant Flow
+    participant FlowProcessor
+    participant Endpoint
+    participant Processor
+    participant StateManager
+    participant Persistence
     
-    subgraph "Preprocessing"
-        SUMMARIZE[SummarizeEndpoint.execute()]
-        EXTRACT[ExtractiveSummarizer.summarize()]
-        RAW_LOADER[RawDataLoader.load()]
-    end
+    User->>Flow: Execute Pipeline Stage
+    Flow->>FlowProcessor: process_items(stage, task_func, data_type)
+    FlowProcessor->>StateManager: get_next_stage_tasks(stage)
+    StateManager-->>FlowProcessor: List[PipelineState]
     
-    subgraph "Processing"
-        CATEGORIZE[CategorizeEndpoint.execute()]
-        CONTENT[ContentCategorizer.categorize_content()]
-        SUMMARY_LOADER[SummaryDataLoader.load()]
+    loop For each item
+        FlowProcessor->>Endpoint: execute(item)
+        Endpoint->>Processor: process_content(data)
+        Processor-->>Endpoint: Dict[result]
+        Endpoint-->>FlowProcessor: Standardized Response
+        
+        alt Success
+            FlowProcessor->>Persistence: save_data(item_id, result, data_type)
+            FlowProcessor->>StateManager: update_stage_status(item_id, stage, COMPLETED)
+        else Error
+            FlowProcessor->>StateManager: update_stage_status(item_id, stage, FAILED, error)
+        end
     end
+```
+
+### Endpoint Architecture
+
+All endpoints inherit from `BaseEndpoint` and implement the standardized `execute` method:
+
+```mermaid
+classDiagram
+    class BaseEndpoint {
+        <<abstract>>
+        +endpoint_name: str
+        +logger: Logger
+        +execute(item: Dict) Dict
+        +_create_success_response() Dict
+        +_create_error_response() Dict
+    }
     
-    subgraph "Infrastructure"
-        SAVE[save_data()]
-        STATE_MGR[PipelineStateManager]
-    end
+    class ScrapeEndpoint {
+        +execute(item: Dict) Dict
+        -_generate_mock_transcript() str
+    }
     
-    SCRAPE --> MOCK
-    SCRAPE --> SAVE
-    SUMMARIZE --> RAW_LOADER
-    SUMMARIZE --> EXTRACT
-    CATEGORIZE --> SUMMARY_LOADER
-    CATEGORIZE --> CONTENT
-    SAVE --> STATE_MGR
+    class SummarizeEndpoint {
+        +execute(item: Dict) Dict
+        -_validate_input() bool
+    }
+    
+    class CategorizeEndpoint {
+        +execute(item: Dict) Dict
+        -_extract_transcript() str
+    }
+    
+    BaseEndpoint <|-- ScrapeEndpoint
+    BaseEndpoint <|-- SummarizeEndpoint
+    BaseEndpoint <|-- CategorizeEndpoint
 ```
 
 ## Complete Workflow Example
 
-A typical end-to-end processing flow begins when a user triggers the scrape flow, which discovers and collects political communications. The system then processes these through the summarization and categorization stages, with state management ensuring reliable progression and failure recovery.
+A typical end-to-end processing flow demonstrates how data moves through the system, from initial scraping through final categorization.
 
-Each stage updates the pipeline state upon completion, enabling the orchestration layer to identify items ready for the next processing stage.
-
-## End-to-End Sequence Flow
+### End-to-End Sequence Diagram
 
 ```mermaid
 sequenceDiagram
@@ -225,54 +320,63 @@ sequenceDiagram
     participant SummarizeEndpoint
     participant ProcessingFlow
     participant CategorizeEndpoint
-    participant PipelineStateManager
-    participant Storage
+    participant StateManager
+    participant FileSystem
     
-    User->>ScrapeFlow: Trigger scrape
-    ScrapeFlow->>ScrapeEndpoint: execute(url, speaker)
-    ScrapeEndpoint->>Storage: save_data(raw_data)
-    ScrapeEndpoint->>PipelineStateManager: create_state()
+    User->>ScrapeFlow: scrape_flow(speaker, start_date, end_date)
+    ScrapeFlow->>ScrapeEndpoint: execute(item)
+    ScrapeEndpoint-->>ScrapeFlow: Success Response
+    ScrapeFlow->>FileSystem: save_data(item_id, raw_data, 'raw')
+    ScrapeFlow->>StateManager: create_state(item_id, scrape_cycle)
     
-    Note over PipelineStateManager: State: RAW → SUMMARIZE
-    
-    PreprocessingFlow->>PipelineStateManager: get_next_stage_tasks("summarize")
-    PipelineStateManager-->>PreprocessingFlow: Return items ready
+    User->>PreprocessingFlow: preprocessing_flow()
+    PreprocessingFlow->>StateManager: get_next_stage_tasks('summarize')
+    StateManager-->>PreprocessingFlow: Items to process
     PreprocessingFlow->>SummarizeEndpoint: execute(item)
-    SummarizeEndpoint->>Storage: save_data(summary)
-    SummarizeEndpoint->>PipelineStateManager: update_stage_status(COMPLETED)
+    SummarizeEndpoint-->>PreprocessingFlow: Success Response
+    PreprocessingFlow->>FileSystem: save_data(item_id, summary_data, 'summary')
+    PreprocessingFlow->>StateManager: update_stage_status(item_id, 'summarize', COMPLETED)
     
-    Note over PipelineStateManager: State: SUMMARIZE → CATEGORIZE
-    
-    ProcessingFlow->>PipelineStateManager: get_next_stage_tasks("categorize")
-    PipelineStateManager-->>ProcessingFlow: Return items ready
+    User->>ProcessingFlow: processing_flow()
+    ProcessingFlow->>StateManager: get_next_stage_tasks('categorize')
+    StateManager-->>ProcessingFlow: Items to process
     ProcessingFlow->>CategorizeEndpoint: execute(item)
-    CategorizeEndpoint->>Storage: save_data(categorization)
-    CategorizeEndpoint->>PipelineStateManager: update_stage_status(COMPLETED)
-    
-    Note over PipelineStateManager: State: CATEGORIZE → Complete
+    CategorizeEndpoint-->>ProcessingFlow: Success Response
+    ProcessingFlow->>FileSystem: save_data(item_id, categorization_data, 'categorization')
+    ProcessingFlow->>StateManager: update_stage_status(item_id, 'categorize', COMPLETED)
 ```
 
-## Technology & Patterns Summary
+## Technology Stack & Design Patterns
 
-The platform leverages a modern Python stack with specialized libraries for each processing stage, ensuring both reliability and performance.
-
-## Technology Stack
+### Technology Stack
 
 | Layer | Technology | Purpose |
 |-------|------------|---------|
-| **Orchestration** | Prefect | Workflow management and task coordination |
-| **Processing** | LangChain | Structured AI output parsing and entity extraction |
-| **Summarization** | SentenceTransformers | Semantic similarity for extractive summarization |
-| **Data Models** | Pydantic | Type-safe data validation and serialization |
-| **State Management** | JSONL files | Lightweight, reliable state persistence |
-| **Configuration** | Python dataclasses | Clean configuration management |
+| **Orchestration** | Prefect | Workflow orchestration and task management |
+| **Processing** | Python 3.12+ | Core application logic |
+| **AI/ML** | OpenAI GPT-4, LangChain, SentenceTransformers | Content analysis and categorization |
+| **Data Validation** | Pydantic | Type safety and data validation |
+| **Logging** | Python logging + tqdm | Structured logging with progress bars |
+| **Storage** | JSON files | Data persistence and state management |
+| **Testing** | Jupyter Notebooks | Interactive testing and validation |
 
-## Key Design Patterns
+### Design Patterns
 
-1. **State-Driven Processing**: Every data point is tracked through pipeline stages for reliable processing and failure recovery.
-2. **Endpoint Pattern**: Each processing stage has dedicated endpoints that encapsulate business logic and coordinate with infrastructure.
-3. **Flow Orchestration**: Prefect workflows provide clean separation between orchestration and processing concerns.
-4. **Pipeline Configuration**: Centralized stage definitions and flow logic enable easy modification and extension.
-5. **Data Loader Pattern**: Specialized loaders handle data access, validation, and transformation for each pipeline stage.
+- **State Machine Pattern**: Pipeline stages with defined transitions
+- **Endpoint Pattern**: Standardized interfaces for all processing stages
+- **Template Method Pattern**: BaseEndpoint provides common structure
+- **Strategy Pattern**: Different processing strategies per stage
+- **Observer Pattern**: State management tracks progress across stages
+- **Factory Pattern**: FlowProcessor creates standardized processing flows
 
-The architecture emphasizes simplicity, reliability, and maintainability while providing a solid foundation for scaling to multi-speaker analysis and advanced relationship modeling.
+### Key Architectural Principles
+
+1. **Separation of Concerns**: Clear boundaries between orchestration, processing, and persistence
+2. **Standardized Interfaces**: All endpoints follow the same execute() contract
+3. **Error Resilience**: Comprehensive error handling with retry mechanisms
+4. **State-Driven Processing**: Resumable workflows with progress tracking
+5. **Configuration Management**: Centralized configuration with environment variables
+6. **Logging Consistency**: Unified logging across all components
+7. **Type Safety**: Pydantic models ensure data integrity throughout the pipeline
+
+This architecture provides a robust, scalable foundation for political communication analysis while maintaining clean code principles and operational excellence.

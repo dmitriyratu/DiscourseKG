@@ -11,7 +11,9 @@ from src.schemas import (
     PolicyDomain, EntityType, SentimentLevel, 
     EntityMention, CategoryWithEntities, CategorizationOutput
 )
-from src.shared.logging_utils import setup_logger
+from src.shared.logging_utils import get_logger
+
+logger = get_logger(__name__)
 
 
 class ContentCategorizer:
@@ -24,7 +26,6 @@ class ContentCategorizer:
     """
     
     def __init__(self):
-        self.logger = setup_logger("content_categorizer", "content_categorizer.log")
         
         llm_kwargs = {
             "model": config.OPENAI_MODEL,
@@ -35,7 +36,7 @@ class ContentCategorizer:
         
         self.llm = ChatOpenAI(**llm_kwargs)
         
-        self.logger.info(f"ContentCategorizer initialized with model: {config.OPENAI_MODEL}")
+        logger.info(f"ContentCategorizer initialized with model: {config.OPENAI_MODEL}")
         
         # Create output parser for structured results
         self.output_parser = PydanticOutputParser(pydantic_object=CategorizationOutput)
@@ -123,8 +124,8 @@ Return structured JSON with categories containing entities and their supporting 
             raise ValueError("No transcript found in content data")
         
         try:
-            self.logger.info(f"Starting categorization for content: {content_data.get('id', 'unknown')}")
-            self.logger.debug(f"Processing transcript length: {len(transcript)} characters")
+            logger.info(f"Starting categorization for content: {content_data.get('id', 'unknown')}")
+            logger.debug(f"Processing transcript length: {len(transcript)} characters")
             
             # Run the chain
             result = self.chain.invoke({
@@ -147,12 +148,12 @@ Return structured JSON with categories containing entities and their supporting 
             categories_count = len(output.get('categories', []))
             entities_count = sum(len(cat.get('entities', [])) for cat in output.get('categories', []))
             
-            self.logger.info(f"Successfully categorized content: {categories_count} categories, {entities_count} entities")
+            logger.info(f"Successfully categorized content: {categories_count} categories, {entities_count} entities")
             
             return output
             
         except Exception as e:
-            self.logger.error(f"LangChain categorization failed for content {content_data.get('id', 'unknown')}: {str(e)}")
+            logger.error(f"LangChain categorization failed for content {content_data.get('id', 'unknown')}: {str(e)}")
             raise Exception(f"LangChain categorization failed: {str(e)}")
     
 

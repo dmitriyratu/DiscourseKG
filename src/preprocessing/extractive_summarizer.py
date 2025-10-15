@@ -14,6 +14,7 @@ from nltk.tokenize import sent_tokenize
 from typing import Optional
 
 from src.schemas import SummarizationResult
+from src.app_config import config
 
 
 class ExtractiveSummarizer:
@@ -36,10 +37,10 @@ class ExtractiveSummarizer:
     CONCLUSION_SENTENCES = 0  # No special treatment for conclusions
     
     def __init__(self):
-        self.tokenizer = tiktoken.get_encoding("cl100k_base")
-        self.model = SentenceTransformer('all-MiniLM-L6-v2')
+        self.tokenizer = tiktoken.get_encoding(config.SUMMARIZER_TOKENIZER)
+        self.model = SentenceTransformer(config.SUMMARIZER_MODEL)
     
-    def summarize(self, text: str, target_tokens: int) -> SummarizationResult:
+    def summarize(self, text: str, target_tokens: int) -> dict:
         """Summarize text to target token count using extractive methods."""
         start_time = time.time()
         original_tokens = len(self.tokenizer.encode(text))
@@ -58,9 +59,9 @@ class ExtractiveSummarizer:
             return self._create_result(text, text, original_tokens, 1.0, start_time, target_tokens, False, str(e))
     
     def _create_result(self, original: str, summary: str, summary_tokens: int, compression: float, 
-                      start_time: float, target_tokens: int, success: bool, error: str = None) -> SummarizationResult:
+                      start_time: float, target_tokens: int, success: bool, error: str = None) -> dict:
         """Helper to create SummarizationResult with consistent timing."""
-        return SummarizationResult(
+        result = SummarizationResult(
             summary=summary,
             original_text=original,
             original_word_count=len(original.split()),
@@ -71,6 +72,7 @@ class ExtractiveSummarizer:
             success=success,
             error_message=error
         )
+        return result.model_dump()
     
     def _do_summarization(self, text: str, target_tokens: int) -> str:
         """Internal method that performs the actual summarization logic."""
