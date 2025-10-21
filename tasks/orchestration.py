@@ -13,15 +13,7 @@ logger = get_logger(__name__)
 
 
 def get_items(stage: str) -> List[Dict[str, Any]]:
-    """
-    Get items needing processing for a stage.
-    
-    Args:
-        stage: Pipeline stage name
-        
-    Returns:
-        List of pipeline state items ready for processing
-    """
+    """Get items needing processing for a stage."""
     manager = PipelineStateManager()
     items = manager.get_next_stage_tasks(stage)
     return [item.model_dump() for item in items]

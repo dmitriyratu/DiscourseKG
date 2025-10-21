@@ -18,15 +18,7 @@ class BaseEndpoint(ABC):
     
     @abstractmethod
     def execute(self, item: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Execute the endpoint processing for a single item.
-        
-        Args:
-            item: Dictionary containing all necessary data for processing
-            
-        Returns:
-            Dictionary with success status and results
-        """
+        """Execute the endpoint processing for a single item."""
         pass
     
     def _create_success_response(self, id: str, result: Any, stage: str, input_data: Any = None) -> Dict[str, Any]:
@@ -39,11 +31,3 @@ class BaseEndpoint(ABC):
             'input_data': input_data
         }
     
-    def _create_error_response(self, id: str, stage: str, error: str) -> Dict[str, Any]:
-        """Create standardized error response."""
-        return {
-            'success': False,
-            'id': id,
-            'stage': stage,
-            'error': error
-        }

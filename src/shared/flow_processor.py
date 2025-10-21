@@ -5,6 +5,7 @@ Provides common patterns for processing items through pipeline stages with
 consistent error handling, persistence, and state management.
 """
 
+import time
 from typing import Dict, Any, Callable
 from prefect import task
 
@@ -23,20 +24,14 @@ class FlowProcessor:
         self.logger = get_logger(flow_name)
     
     def process_items(self, stage: str, task_func: Callable, data_type: str):
-        """
-        Process items through a pipeline stage with consistent error handling.
-        
-        Args:
-            stage: Pipeline stage name (e.g., 'summarize', 'categorize')
-            task_func: Prefect task function to execute
-            data_type: Data type for persistence (e.g., 'summary', 'categorization')
-        """
+        """Process items through a pipeline stage with consistent error handling."""
         items = get_items(stage)
         self.logger.info(f"Found {len(items)} items to process for stage {stage}")
         
         manager = PipelineStateManager()
         
-        for item in items:
+        for i, item in enumerate(items, 1):
+            self.logger.info(f"Processing item {i}/{len(items)}: {item.get('id', 'unknown')}")
             self._process_single_item(item, task_func, stage, data_type, manager)
         
         self.logger.info(f"Completed {self.flow_name} for {len(items)} items")
@@ -45,50 +40,62 @@ class FlowProcessor:
                            stage: str, data_type: str, manager: PipelineStateManager):
         """Process a single item with error handling and state management."""
         try:
-            # Process the item
+            # Process the item with timing
+            start_time = time.time()
             result = task_func.submit(item)
             result_data = result.result()
             
-            if result_data['success']:
-                # Extract metadata from pipeline state
-                speaker = item.get('speaker')
-                content_type = item.get('content_type', 'unknown')
-                
-                # Save the result
-                output_file = save_data(
-                    result_data['id'], 
-                    result_data['result'], 
-                    data_type, 
-                    speaker=speaker,
-                    content_type=content_type
-                )
-                
-                # Update pipeline state
-                manager.update_stage_status(
-                    result_data['id'], 
-                    stage, 
-                    PipelineStageStatus.COMPLETED
-                )
-                
-                self.logger.info(f"Completed {stage} for item {result_data['id']} -> {output_file}")
-            else:
-                # Handle failure
-                manager.update_stage_status(
-                    result_data['id'], 
-                    stage, 
-                    PipelineStageStatus.FAILED,
-                    error_message=result_data['error']
-                )
-                self.logger.error(f"Failed {stage} for item {result_data['id']}: {result_data['error']}")
+            # Add timing to result_data
+            elapsed = max(0.01, time.time() - start_time)
+            result_data['processing_time_seconds'] = round(elapsed, 2)
+            
+            # Extract metadata from pipeline state
+            speaker = item.get('speaker')
+            content_type = item.get('content_type', 'unknown')
+            
+            # Save the result
+            output_file = save_data(
+                result_data['id'], 
+                result_data['result'],  # Save the complete result including id field
+                data_type, 
+                speaker=speaker,
+                content_type=content_type
+            )
+            
+            # Update pipeline state
+            manager.update_stage_status(
+                result_data['id'], 
+                stage, 
+                PipelineStageStatus.COMPLETED,
+                result_data=result_data,
+                file_path=output_file
+            )
+            
+            self.logger.debug(f"Successfully completed {stage} for item {result_data['id']} -> {output_file}")
                 
         except Exception as e:
             id = item.get('id', 'unknown')
-            self.logger.error(f"Unexpected error processing item {id} in {stage}: {str(e)}")
+            self.logger.error(f"Error processing item {id} in {stage}: {str(e)}", 
+                             extra={'item_id': id, 'stage': stage, 'error_type': 'component_error', 'item_url': item.get('source_url')})
+            
+            # Create error result for pipeline state (consistent with endpoint structure)
+            error_result = {
+                'success': True,
+                'id': id,
+                'stage': stage,
+                'result': {
+                    'id': id,
+                    'success': False,
+                    'data': None,
+                    'error_message': str(e)
+                },
+                'processing_time_seconds': round(time.time() - start_time, 2) if 'start_time' in locals() else 0.01
+            }
             
             # Update state to failed
             manager.update_stage_status(
                 id, 
                 stage, 
                 PipelineStageStatus.FAILED,
-                error_message=str(e)
+                result_data=error_result
             )

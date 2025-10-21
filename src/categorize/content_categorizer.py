@@ -1,4 +1,5 @@
 from typing import Dict, List, Any
+import time
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
@@ -8,9 +9,10 @@ from pydantic import BaseModel, Field
 from src.app_config import config
 from src.schemas import (
     PolicyDomain, EntityType, SentimentLevel, 
-    EntityMention, CategoryWithEntities, CategorizationOutput
+    EntityMention, CategoryWithEntities, CategorizationOutput, CategorizationResult
 )
 from src.shared.logging_utils import get_logger
+from src.pipeline_config import PipelineStages
 
 logger = get_logger(__name__)
 
@@ -35,7 +37,8 @@ class ContentCategorizer:
         
         self.llm = ChatOpenAI(**llm_kwargs)
         
-        logger.info(f"ContentCategorizer initialized with model: {config.OPENAI_MODEL}")
+        logger.debug(f"ContentCategorizer initialized with model: {config.OPENAI_MODEL}")
+        logger.debug(f"Using temperature: {config.OPENAI_TEMPERATURE}, max_tokens: {config.OPENAI_MAX_TOKENS}")
         
         # Create output parser for structured results
         self.output_parser = PydanticOutputParser(pydantic_object=CategorizationOutput)
@@ -105,15 +108,9 @@ Return structured JSON with categories containing entities and their supporting 
     
     
     def categorize_content(self, content_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Categorize content from a dictionary.
+        """Categorize content from a dictionary."""
+        start_time = time.time()
         
-        Args:
-            content_data: Dictionary containing content to categorize
-        
-        Returns:
-            Dictionary containing categorization results
-        """
         transcript = content_data.get('transcript', '')
         title = content_data.get('title', 'Unknown')
         speakers = content_data.get('speakers', ['Unknown'])
@@ -123,7 +120,8 @@ Return structured JSON with categories containing entities and their supporting 
             raise ValueError("No transcript found in content data")
         
         try:
-            logger.info(f"Starting categorization for content: {content_data.get('id', 'unknown')}")
+            logger.debug(f"Starting categorization for content: {content_data.get('id', 'unknown')}")
+            logger.debug(f"Processing transcript: {len(transcript)} chars, truncated to {config.MAX_TRANSCRIPT_LENGTH}")
             
             # Run the chain with all required fields
             result = self.chain.invoke({
@@ -133,24 +131,31 @@ Return structured JSON with categories containing entities and their supporting 
                 "date": date
             })
             
-            # Convert to dict and add metadata
-            output = result.dict()
-            output['id'] = content_data.get('id', 'unknown')
-            output['metadata'] = {
-                'model_used': config.OPENAI_MODEL
-            }
+            logger.debug(f"LLM response received: {len(result.dict().get('categories', []))} categories")
             
+            # Create structured result using schema
+            categorization_result = CategorizationResult(
+                id=content_data.get('id', 'unknown'),
+                success=True,
+                data=result,
+                metadata={
+                    'model_used': config.OPENAI_MODEL
+                }
+            )
             
-            categories_count = len(output.get('categories', []))
-            entities_count = sum(len(cat.get('entities', [])) for cat in output.get('categories', []))
+            categories_count = len(categorization_result.data.categories)
+            entities_count = sum(len(cat.entities) for cat in categorization_result.data.categories)
             
-            logger.info(f"Successfully categorized content: {categories_count} categories, {entities_count} entities")
+            logger.debug(f"Successfully categorized content: {categories_count} categories, {entities_count} entities")
             
-            return output
+            return categorization_result.model_dump()
             
         except Exception as e:
-            logger.error(f"LangChain categorization failed for content {content_data.get('id', 'unknown')}: {str(e)}")
-            raise Exception(f"LangChain categorization failed: {str(e)}")
+            logger.error(f"LangChain categorization failed for content {content_data.get('id', 'unknown')}: {str(e)}", 
+                        extra={'item_id': content_data.get('id', 'unknown'), 'stage': PipelineStages.CATEGORIZE, 
+                               'error_type': 'langchain_error', 'transcript_length': len(transcript)})
+            # Let exception bubble up to flow processor
+            raise
     
 
 

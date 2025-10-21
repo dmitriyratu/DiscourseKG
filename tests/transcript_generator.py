@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 import json
 import uuid
 from pathlib import Path
+from typing import Dict, Any
 
 # Load transcript templates
 TEMPLATES_PATH = Path(__file__).parent / "transcript_templates.json"
@@ -15,43 +16,29 @@ with open(TEMPLATES_PATH, 'r', encoding='utf-8') as f:
     TRANSCRIPT_TEMPLATES = json.load(f)
 
 
-def generate_test_transcript(index: int, content_type: str = "speech") -> dict:
-    """
-    Generate a test transcript with realistic content.
-    
-    Args:
-        index: Index number for the transcript
-        content_type: Type of content (speech, debate, interview)
-    
-    Returns:
-        Dictionary containing transcript data
-    """
-    # Generate unique ID
-    id = f"test-{content_type}-{index}-{uuid.uuid4().hex[:8]}"
+def generate_test_transcript(item: Dict[str, Any], content_type: str = "speech") -> dict:
+    """Generate a test transcript with realistic content."""
+    # Use existing ID from the item
+    id = item['id']
     
     # Generate timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
-    # Generate date (recent)
-    date = (datetime.now() - timedelta(days=index)).strftime("%Y-%m-%d")
-    
-    # Generate source URL
-    source_url = f"https://example.com/test/{content_type}_{index}_{timestamp}"
+    # Use existing data from item
+    date = item.get('date', (datetime.now() - timedelta(days=0)).strftime("%Y-%m-%d"))
+    source_url = item.get('source_url', f"https://example.com/test/{content_type}_{timestamp}")
     
     # Generate transcript content
-    transcript_content = generate_transcript_text(content_type, index)
+    transcript_content = generate_transcript_text(content_type, 0)
     
     # Return structured data (no file I/O)
     return {
         "id": id,
-        "title": f"Test {content_type.title()} #{index} ({timestamp})",
+        "title": f"Test {content_type.title()} ({timestamp})",
         "date": date,
         "event_date": date,
         "type": content_type,
         "source_url": source_url,
-        "location": "Test Location",
-        "main_subject": "Test Speaker",
-        "speakers": ["Test Speaker"],
         "timestamp": timestamp,
         "transcript": transcript_content
     }

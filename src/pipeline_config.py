@@ -19,6 +19,7 @@ class PipelineStageStatus(str, Enum):
 
 class PipelineStages:
     """Pipeline stage definitions - values match directory names"""
+    DISCOVERY = "discovery"
     SCRAPE = "scrape"
     SUMMARIZE = "summarize" 
     CATEGORIZE = "categorize"
@@ -29,6 +30,7 @@ class PipelineConfig:
     
     # Define stage flow (what comes after each stage)
     STAGE_FLOW = {
+        PipelineStages.DISCOVERY: PipelineStages.SCRAPE,
         PipelineStages.SCRAPE: PipelineStages.SUMMARIZE,
         PipelineStages.SUMMARIZE: PipelineStages.CATEGORIZE, 
         PipelineStages.CATEGORIZE: None  # Pipeline complete

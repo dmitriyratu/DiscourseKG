@@ -2,7 +2,7 @@
 
 ## High-Level System Overview
 
-The KG-Sentiment platform is a state-driven, multi-stage data processing pipeline designed for political communication analysis. The system processes political transcripts through three sequential stages: scraping, summarization, and categorization, with each stage building upon the previous one's output.
+The KG-Sentiment platform is a state-driven, multi-stage data processing pipeline designed for political communication analysis. The system processes political transcripts through four sequential stages: discovery, scraping, summarization, and categorization, with each stage building upon the previous one's output.
 
 The core architecture follows a **state-driven processing pattern** where each data item maintains its processing state throughout the pipeline. This enables robust error handling, retry mechanisms, and the ability to resume processing from any point. The system uses **endpoint pattern** for consistent processing interfaces and **flow orchestration** with Prefect for managing complex workflows.
 
@@ -13,12 +13,14 @@ graph TB
     end
     
     subgraph "Flow Layer"
+        DF["discovery_flow.py<br/>Content Discovery"]
         SF["scrape_flow.py<br/>Data Collection"]
         SUMF["summarize_flow.py<br/>Content Summarization"]
         CF["categorize_flow.py<br/>Entity Categorization"]
     end
     
     subgraph "Processing Layer"
+        DE["DiscoveryEndpoint<br/>Source Discovery"]
         SE["ScrapeEndpoint<br/>Web Scraping"]
         SUME["SummarizeEndpoint<br/>Text Summarization"]
         CE["CategorizeEndpoint<br/>Entity Extraction"]
@@ -38,18 +40,22 @@ graph TB
         PROC[("Processed Data<br/>JSON Files")]
     end
     
+    ORCH --> DF
     ORCH --> SF
     ORCH --> SUMF
     ORCH --> CF
     
+    DF --> DE
     SF --> SE
     SUMF --> SUME
     CF --> CE
     
+    DE --> BSE
     SE --> BSE
     SUME --> BSE
     CE --> BSE
     
+    DF --> FPR
     SF --> FPR
     SUMF --> FPR
     CF --> FPR
@@ -65,13 +71,21 @@ graph TB
 
 ## Pipeline Flow & State Management
 
-The pipeline processes data through three distinct stages with clear state transitions. Each item moves through the pipeline based on its current state, enabling parallel processing of different stages and robust error recovery.
+The pipeline processes data through four distinct stages with clear state transitions. Each item moves through the pipeline based on its current state, enabling parallel processing of different stages and robust error recovery.
 
 The state management system tracks each data item's progress through the pipeline, maintaining metadata about processing status, timing, and any errors encountered. This allows the system to resume processing from any point and provides comprehensive audit trails.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Raw: Data Scraped
+    [*] --> DiscoveryPending: Content Discovery
+    
+    state "Discovery Stage" as D1 {
+        [*] --> DiscoveryPending
+        DiscoveryPending --> DiscoveryInProgress: Start Processing
+        DiscoveryInProgress --> DiscoveryCompleted: Success
+        DiscoveryInProgress --> DiscoveryFailed: Error
+        DiscoveryFailed --> DiscoveryInProgress: Retry
+    }
     
     state "Scrape Stage" as S1 {
         [*] --> ScrapePending
@@ -97,11 +111,12 @@ stateDiagram-v2
         CategorizeFailed --> CategorizeInProgress: Retry
     }
     
-    Raw --> S1: scrape → summarize
-    S1 --> S2: summarize → categorize
-    S2 --> S3: categorize → complete
+    D1 --> S1: discovery → scrape
+    S1 --> S2: scrape → summarize
+    S2 --> S3: summarize → categorize
     S3 --> [*]: Pipeline Complete
     
+    note right of D1: Discover content sources<br/>and create pipeline states
     note right of S1: Extract content from<br/>web sources
     note right of S2: Generate concise<br/>summaries
     note right of S3: Extract entities and<br/>categorize by policy domain
@@ -113,6 +128,8 @@ stateDiagram-v2
 
 All processing components inherit from `BaseEndpoint`, providing a standardized interface for data processing. Each endpoint implements the `execute()` method that takes a dictionary of input data and returns a standardized response format with success status, results, and metadata.
 
+**DiscoveryEndpoint** identifies and discovers political content sources, creating initial pipeline state records for items that need processing. It handles speaker-based discovery with date range filtering.
+
 **ScrapeEndpoint** handles web content extraction, currently using mock data generation but designed for future agent-based scraping implementation. It extracts transcript content from various political communication sources.
 
 **SummarizeEndpoint** processes raw transcript content to generate concise summaries using extractive summarization techniques. It maintains compression ratios and processing metrics for quality control.
@@ -123,9 +140,9 @@ All processing components inherit from `BaseEndpoint`, providing a standardized 
 
 The system uses Prefect for workflow orchestration, with each pipeline stage implemented as a separate flow. The `FlowProcessor` class provides common patterns for loading data, processing items through endpoints, and updating pipeline state.
 
-**ScrapeFlow** initiates the pipeline by discovering and scraping political content. It creates initial pipeline state records and saves raw data to the filesystem.
+**DiscoveryFlow** initiates the pipeline by discovering political content sources and creating initial pipeline state records. It takes speaker, start_date, and end_date parameters to scope the discovery.
 
-**SummarizeFlow** and **CategorizeFlow** follow the same pattern: they query the pipeline state for items ready for their stage, process them through their respective endpoints, and update the state upon completion.
+**ScrapeFlow**, **SummarizeFlow**, and **CategorizeFlow** follow the same pattern: they query the pipeline state for items ready for their stage, process them through their respective endpoints, and update the state upon completion.
 
 ### State Management
 
@@ -186,22 +203,28 @@ classDiagram
         +categories: List[CategoryWithEntities]
     }
     
-    class SummarizationResult {
-        +id: str
+    class ScrapingData {
+        +title: str
+        +date: str
+        +event_date: str
+        +type: str
+        +source_url: str
+        +timestamp: str
+        +transcript: str
+    }
+    
+    class SummarizationData {
         +summary: str
         +original_word_count: int
         +summary_word_count: int
         +compression_ratio: float
-        +processing_time_seconds: float
         +target_word_count: int
-        +success: bool
-        +error_message: Optional[str]
     }
     
     class PipelineState {
         +id: str
         +scrape_cycle: str
-        +raw_file_path: Optional[str]
+        +file_path: Optional[str]
         +source_url: Optional[str]
         +speaker: Optional[str]
         +content_type: Optional[str]
@@ -242,16 +265,22 @@ KG-Sentiment/
 │   ├── app_config.py            # Configuration management
 │   ├── pipeline_config.py       # Pipeline stage definitions
 │   ├── schemas.py               # Pydantic data models
-│   ├── categorize/              # Categorization processing
-│   │   ├── categorize_endpoint.py
-│   │   ├── content_categorizer.py
+│   ├── discovery/               # Content discovery processing
+│   │   ├── discovery_endpoint.py
+│   │   ├── discovery_agent.py
 │   │   └── pipeline.py
-│   ├── collect/                 # Data collection
-│   │   └── scrape_endpoint.py
+│   ├── scrape/                  # Data scraping
+│   │   ├── scrape_endpoint.py
+│   │   ├── scraper.py
+│   │   └── pipeline.py
 │   ├── summarize/               # Summarization processing
 │   │   ├── extractive_summarizer.py
 │   │   ├── pipeline.py
 │   │   └── summarize_endpoint.py
+│   ├── categorize/              # Categorization processing
+│   │   ├── categorize_endpoint.py
+│   │   ├── content_categorizer.py
+│   │   └── pipeline.py
 │   └── shared/                  # Common utilities
 │       ├── base_endpoint.py     # Standardized endpoint interface
 │       ├── data_loaders.py      # File I/O operations
@@ -260,6 +289,7 @@ KG-Sentiment/
 │       ├── persistence.py       # Data storage operations
 │       └── pipeline_state.py    # State management
 ├── flows/                       # Prefect workflow definitions
+│   ├── discovery_flow.py       # Content discovery workflow
 │   ├── scrape_flow.py          # Data collection workflow
 │   ├── summarize_flow.py       # Summarization workflow
 │   └── categorize_flow.py      # Categorization workflow

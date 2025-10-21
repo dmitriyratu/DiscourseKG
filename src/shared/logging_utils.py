@@ -8,9 +8,10 @@ import inspect
 from pathlib import Path
 import pyprojroot
 from tqdm.contrib.logging import logging_redirect_tqdm
+from src.app_config import config
 
 
-def get_logger(name: str = None, level: logging = logging.INFO):
+def get_logger(name: str = None, level: logging = None):
     """Set up a logger with automatic naming and tqdm integration."""
     if name is None:
         # Get caller's module name
@@ -25,6 +26,10 @@ def get_logger(name: str = None, level: logging = logging.INFO):
     logger = logging.getLogger(module_name)
 
     if not logger.handlers:
+        # Set level based on environment if not specified
+        if level is None:
+            level = logging.DEBUG if config.ENVIRONMENT == "development" else logging.INFO
+        
         logger.setLevel(level)
         formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 

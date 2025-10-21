@@ -24,7 +24,7 @@ class PipelineState(BaseModel):
     # Core identifiers
     id: str = Field(..., description="Unique ID from raw data (matches the 'id' field in raw JSON files)")
     scrape_cycle: str = Field(..., description="Hourly timestamp when scraped (YYYY-MM-DD_HH:00:00)")
-    raw_file_path: Optional[str] = Field(None, description="Path to raw JSON file (relative to project root)")
+    file_path: Optional[str] = Field(None, description="Path to current stage's output file (relative to project root)")
     source_url: Optional[str] = Field(None, description="Original source URL (for deduplication and audit trail)")
     
     # Content metadata
@@ -52,27 +52,27 @@ class PipelineStateManager:
         self.state_file_path = Path(state_file_path or config.PIPELINE_STATE_FILE)
         self.state_file_path.parent.mkdir(parents=True, exist_ok=True)
     
-    def create_state(self, data_point_id: str, scrape_cycle: str, raw_file_path: str = None, 
+    def create_state(self, id: str, scrape_cycle: str, file_path: str = None, 
                     source_url: str = None, speaker: str = None, content_type: str = None) -> PipelineState:
         """Create a new pipeline state for a data point"""
         now = datetime.now().isoformat()
         
         state = PipelineState(
-            id=data_point_id,
+            id=id,
             scrape_cycle=scrape_cycle,
-            raw_file_path=raw_file_path,
+            file_path=file_path,
             source_url=source_url,
             speaker=speaker,
             content_type=content_type,
-            latest_completed_stage=pipeline_stages.SCRAPE,
-            next_stage=pipeline_config.FIRST_PROCESSING_STAGE,
+            latest_completed_stage=pipeline_stages.DISCOVERY,
+            next_stage=pipeline_stages.SCRAPE,
             created_at=now,
             updated_at=now
         )
         
         # Append to state file
         self._append_state(state)
-        logger.info(f"Created pipeline state for data point: {data_point_id}")
+        logger.debug(f"Created pipeline state for data point: {id}")
         
         return state
     
@@ -84,7 +84,7 @@ class PipelineStateManager:
                 return PipelineState(**state_dict)
         return None
     
-    def get_state(self, data_point_id: str) -> Optional[PipelineState]:
+    def get_state(self, id: str) -> Optional[PipelineState]:
         """Get current state for a data point"""
         if not self.state_file_path.exists():
             return None
@@ -93,12 +93,12 @@ class PipelineStateManager:
             for line in f:
                 if line.strip():
                     record = json.loads(line.strip())
-                    if record["id"] == data_point_id:
+                    if record["id"] == id:
                         return PipelineState(**record)
         return None
     
-    def update_stage_status(self, data_point_id: str, stage: str, status: PipelineStageStatus, 
-                           error_message: str = None, processing_time: float = None):
+    def update_stage_status(self, id: str, stage: str, status: PipelineStageStatus, 
+                           result_data: dict = None, file_path: str = None):
         """Update status of a specific stage for a data point"""
         # Read all existing states
         states = self._read_all_states()
@@ -106,14 +106,23 @@ class PipelineStateManager:
         # Find and update the matching state
         updated = False
         for state_dict in states:
-            if state_dict["id"] == data_point_id:
+            if state_dict["id"] == id:
                 state_dict["updated_at"] = datetime.now().isoformat()
+                
+                processing_time = None
+                if result_data:
+                    processing_time = result_data.get('processing_time_seconds')
+                    error_message = result_data.get('result', {}).get('error_message')
                 
                 if processing_time:
                     if state_dict["processing_time_seconds"]:
-                        state_dict["processing_time_seconds"] += processing_time
+                        state_dict["processing_time_seconds"] = round(state_dict["processing_time_seconds"] + processing_time, 2)
                     else:
-                        state_dict["processing_time_seconds"] = processing_time
+                        state_dict["processing_time_seconds"] = round(processing_time, 2)
+                
+                # Update file_path for any stage
+                if file_path:
+                    state_dict["file_path"] = file_path
                 
                 # Handle stage completion or failure
                 if status == PipelineStageStatus.COMPLETED:
@@ -132,9 +141,14 @@ class PipelineStateManager:
         if updated:
             # Rewrite the entire file with updated states
             self._write_all_states(states)
-            logger.info(f"Updated {stage} status to {status.value} for data point: {data_point_id}")
+            if status == PipelineStageStatus.FAILED:
+                logger.error(f"Stage {stage} failed for data point: {id}")
+            elif status == PipelineStageStatus.COMPLETED:
+                logger.debug(f"Completed {stage} for data point: {id}")
+            else:
+                logger.debug(f"Updated {stage} status to {status.value} for data point: {id}")
         else:
-            logger.warning(f"Data point not found for update: {data_point_id}")
+            logger.warning(f"Data point not found for update: {id}")
     
     def get_next_stage_tasks(self, stage: str) -> List[PipelineState]:
         """Get all data points where the next_stage matches the requested stage"""

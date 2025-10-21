@@ -5,7 +5,7 @@ Summarize endpoint for processing raw transcripts.
 from typing import Dict, Any
 
 from src.shared.base_endpoint import BaseEndpoint
-from src.shared.data_loaders import RawDataLoader
+from src.shared.data_loaders import DataLoader
 from src.summarize.pipeline import preprocess_content
 from src.app_config import config
 from src.pipeline_config import PipelineStages
@@ -20,23 +20,21 @@ class SummarizeEndpoint(BaseEndpoint):
     def execute(self, item: Dict[str, Any]) -> Dict[str, Any]:
         """Execute the summarization process for a single item."""
         try:
-            self.logger.info(f"Summarizing item: {item['id']}")
+            self.logger.info(f"Processing summarization request for item: {item['id']}")
+            self.logger.debug(f"Summarizing item: {item['id']}")
             
             # Load raw data
-            raw_loader = RawDataLoader()
-            raw_data = raw_loader.load(item['raw_file_path'])
+            data_loader = DataLoader()
+            transcript = data_loader.extract_data_field(item['file_path'], 'transcript')
             
             # Validate transcript content
-            if not raw_data.transcript or not raw_data.transcript.strip():
+            if not transcript or not transcript.strip():
                 raise ValueError("Empty or invalid transcript content")
             
             # Process through summarization
-            result = preprocess_content(item['id'], raw_data.transcript, config.TARGET_SUMMARY_TOKENS)
+            result = preprocess_content(item['id'], transcript, config.TARGET_SUMMARY_TOKENS)
             
-            if not result['success']:
-                raise ValueError(f"Summarization failed: {result['error_message']}")
-            
-            self.logger.info(f"Successfully summarized item {item['id']} - {result['summary_word_count']} words")
+            self.logger.debug(f"Successfully summarized item {item['id']} - {result['data']['summary_word_count']} words")
             
             return self._create_success_response(
                 id=item['id'],
@@ -45,9 +43,7 @@ class SummarizeEndpoint(BaseEndpoint):
             )
             
         except Exception as e:
-            self.logger.error(f"Summarization failed for item {item['id']}: {str(e)}")
-            return self._create_error_response(
-                id=item['id'],
-                stage=PipelineStages.SUMMARIZE,
-                error=str(e)
-            )
+            self.logger.error(f"Summarization failed for item {item['id']}: {str(e)}", 
+                             extra={'item_id': item['id'], 'stage': PipelineStages.SUMMARIZE, 'error_type': 'endpoint_error'})
+            # Let exception bubble up to flow processor
+            raise

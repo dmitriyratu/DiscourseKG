@@ -7,7 +7,7 @@ for categorizing political communications, extracting entities, and analyzing se
 
 from pydantic import BaseModel, Field
 from enum import Enum
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 
 # ============================================================================
@@ -103,16 +103,48 @@ class CategorizationOutput(BaseModel):
     categories: List[CategoryWithEntities] = Field(description="List of categories with entities")
 
 
-class SummarizationResult(BaseModel):
-    """Result of summarization operation with metrics and metadata."""
-    
-    id: str = Field(..., description="Unique identifier for the summarized content")
+class ScrapingData(BaseModel):
+    """Scraped content data."""
+    title: str = Field(..., description="Title of the scraped content")
+    date: str = Field(..., description="Date of the content")
+    event_date: str = Field(..., description="Event date")
+    type: str = Field(..., description="Type of content (speech, interview, debate)")
+    source_url: str = Field(..., description="Original source URL")
+    timestamp: str = Field(..., description="Content timestamp")
+    transcript: str = Field(..., description="The scraped transcript text")
+
+
+class ScrapingResult(BaseModel):
+    """Result of scraping operation with metrics and metadata."""
+    id: str = Field(..., description="Unique identifier for the scraped content")
+    success: bool = Field(..., description="Whether scraping was successful")
+    data: Optional[ScrapingData] = Field(None, description="Scraped content data")
+    error_message: Optional[str] = Field(None, description="Error message if scraping failed")
+
+
+class SummarizationData(BaseModel):
+    """Summarized content data."""
     summary: str = Field(..., description="The summarized text")
     original_word_count: int = Field(..., description="Word count of original text")
     summary_word_count: int = Field(..., description="Word count of summary")
     compression_ratio: float = Field(..., description="Ratio of summary length to original length")
-    processing_time_seconds: float = Field(..., description="Time taken to process in seconds")
     target_word_count: int = Field(..., description="Target word count for summary")
+
+
+class SummarizationResult(BaseModel):
+    """Result of summarization operation with metrics and metadata."""
+    id: str = Field(..., description="Unique identifier for the summarized content")
     success: bool = Field(..., description="Whether summarization was successful")
+    data: Optional[SummarizationData] = Field(None, description="Summarized content data")
     error_message: Optional[str] = Field(None, description="Error message if summarization failed")
+
+
+class CategorizationResult(BaseModel):
+    """Result of categorization operation with metrics and metadata."""
+    id: str = Field(..., description="Unique identifier for the categorized content")
+    success: bool = Field(..., description="Whether categorization was successful")
+    data: Optional[CategorizationOutput] = Field(None, description="Categorized content data")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+    error_message: Optional[str] = Field(None, description="Error message if categorization failed")
+
 

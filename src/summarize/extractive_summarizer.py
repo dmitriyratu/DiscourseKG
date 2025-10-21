@@ -13,7 +13,7 @@ from sentence_transformers import SentenceTransformer, util
 from nltk.tokenize import sent_tokenize
 from typing import Optional
 
-from src.schemas import SummarizationResult
+from src.schemas import SummarizationResult, SummarizationData
 from src.app_config import config
 
 
@@ -53,24 +53,28 @@ class ExtractiveSummarizer:
             summary_tokens = len(self.tokenizer.encode(summary_text))
             compression_ratio = len(summary_text) / len(text) if text else 0.0
             
-            return self._create_result(id, text, summary_text, summary_tokens, compression_ratio, start_time, target_tokens, True)
+            return self._create_result(id, text, summary_text, summary_tokens, compression_ratio, start_time, target_tokens)
             
         except Exception as e:
-            return self._create_result(id, text, text, original_tokens, 1.0, start_time, target_tokens, False, str(e))
+            logger.error(f"Summarization failed for content {id}: {str(e)}")
+            # Let exception bubble up to flow processor
+            raise
     
     def _create_result(self, id: str, original: str, summary: str, summary_tokens: int, compression: float, 
-                      start_time: float, target_tokens: int, success: bool, error: str = None) -> dict:
-        """Helper to create SummarizationResult with consistent timing."""
-        result = SummarizationResult(
-            id=id,
+                      start_time: float, target_tokens: int) -> dict:
+        """Helper to create SummarizationResult."""
+        summarization_data = SummarizationData(
             summary=summary,
             original_word_count=len(original.split()),
             summary_word_count=len(summary.split()),
             compression_ratio=compression,
-            processing_time_seconds=time.time() - start_time,
-            target_word_count=target_tokens,
-            success=success,
-            error_message=error
+            target_word_count=target_tokens
+        )
+        
+        result = SummarizationResult(
+            id=id,
+            success=True,
+            data=summarization_data
         )
         return result.model_dump()
     
