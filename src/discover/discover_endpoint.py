@@ -1,5 +1,5 @@
 """
-Discovery endpoint for finding content sources.
+Discover endpoint for finding content sources.
 
 This endpoint handles the discovery of content sources and creation of pipeline states.
 Currently uses mock discovery - will be replaced with agent-based discovery.
@@ -7,15 +7,15 @@ Currently uses mock discovery - will be replaced with agent-based discovery.
 
 from typing import Dict, Any, List
 from src.shared.base_endpoint import BaseEndpoint
-from src.discovery.pipeline import discover_content
+from src.discover.pipeline import discover_content
 from src.pipeline_config import PipelineStages
 
 
-class DiscoveryEndpoint(BaseEndpoint):
+class DiscoverEndpoint(BaseEndpoint):
     """Endpoint for discovering content sources."""
     
     def __init__(self):
-        super().__init__("DiscoveryEndpoint")
+        super().__init__("DiscoverEndpoint")
     
     def execute(self, discovery_params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute the discovery process for given parameters."""
@@ -35,12 +35,12 @@ class DiscoveryEndpoint(BaseEndpoint):
             return self._create_success_response(
                 id=result.get('discovery_id'),
                 result=result,
-                stage=PipelineStages.DISCOVERY
+                stage=PipelineStages.DISCOVER.value
             )
             
         except Exception as e:
             id = discovery_params.get('id', 'unknown')
             self.logger.error(f"Error discovering content for {discovery_params.get('speaker', 'unknown')}: {str(e)}", 
-                             extra={'speaker': discovery_params.get('speaker'), 'stage': PipelineStages.DISCOVERY, 'error_type': 'endpoint_error'})
+                             extra={'speaker': discovery_params.get('speaker'), 'stage': PipelineStages.DISCOVER.value, 'error_type': 'endpoint_error'})
             # Let exception bubble up to flow processor
             raise

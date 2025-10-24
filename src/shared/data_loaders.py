@@ -3,9 +3,12 @@ Simple data loader for pipeline stages.
 """
 
 import json
+from pathlib import Path
 from typing import Dict, Any
+import pyprojroot
 
-from src.shared.logging_utils import get_logger
+from src.utils.logging_utils import get_logger
+from src.pipeline_config import PipelineStages
 
 logger = get_logger(__name__)
 
@@ -14,19 +17,29 @@ class DataLoader:
     """Loads JSON data for any pipeline stage."""
     
     def load(self, file_path: str) -> Dict[str, Any]:
-        """Load JSON data from file path."""
-        logger.debug(f"Loading data from {file_path}")
+        """Load JSON data from file path (supports both relative and absolute paths)."""
+        # Convert to Path object
+        path = Path(file_path)
+        
+        # If path is not absolute, resolve it relative to project root
+        if not path.is_absolute():
+            path = pyprojroot.here() / path
+        
+        logger.debug(f"Loading data from {path}")
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(path, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except FileNotFoundError:
-            raise FileNotFoundError(f"File not found: {file_path}")
+            raise FileNotFoundError(f"File not found: {path}")
         except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON in {file_path}: {e}")
+            raise ValueError(f"Invalid JSON in {path}: {e}")
     
-    def extract_data_field(self, file_path: str, field: str) -> Any:
-        """Extract a specific field from the nested data structure."""
+    def extract_stage_output(self, file_path: str, stage: PipelineStages) -> Any:
+        """Extract the output field from a specific stage's file.
+        
+        Convention: The field name matches the stage name (e.g., 'scrape', 'summarize', 'categorize').
+        """
         data = self.load(file_path)
-        return data['data'].get(field, '')
+        return data['data'].get(stage.value, '')
 
 

@@ -1,7 +1,7 @@
 """
-Simple test transcript generator for KG-Sentiment platform.
+Simple test scrape content generator for KG-Sentiment platform.
 
-Just generates mock transcript data - no file I/O, no pipeline state creation.
+Just generates mock scrape data - no file I/O, no pipeline state creation.
 """
 
 from datetime import datetime, timedelta
@@ -10,14 +10,14 @@ import uuid
 from pathlib import Path
 from typing import Dict, Any
 
-# Load transcript templates
+# Load content templates
 TEMPLATES_PATH = Path(__file__).parent / "transcript_templates.json"
 with open(TEMPLATES_PATH, 'r', encoding='utf-8') as f:
-    TRANSCRIPT_TEMPLATES = json.load(f)
+    CONTENT_TEMPLATES = json.load(f)
 
 
 def generate_test_transcript(item: Dict[str, Any], content_type: str = "speech") -> dict:
-    """Generate a test transcript with realistic content."""
+    """Generate test scrape content with realistic data."""
     # Use existing ID from the item
     id = item['id']
     
@@ -28,8 +28,8 @@ def generate_test_transcript(item: Dict[str, Any], content_type: str = "speech")
     date = item.get('date', (datetime.now() - timedelta(days=0)).strftime("%Y-%m-%d"))
     source_url = item.get('source_url', f"https://example.com/test/{content_type}_{timestamp}")
     
-    # Generate transcript content
-    transcript_content = generate_transcript_text(content_type, 0)
+    # Generate scrape content
+    scrape_content = generate_content_text(content_type, 0)
     
     # Return structured data (no file I/O)
     return {
@@ -40,16 +40,16 @@ def generate_test_transcript(item: Dict[str, Any], content_type: str = "speech")
         "type": content_type,
         "source_url": source_url,
         "timestamp": timestamp,
-        "transcript": transcript_content
+        "scrape": scrape_content
     }
 
 
-def generate_transcript_text(content_type: str, index: int) -> str:
-    """Generate realistic test transcript content from templates."""
-    template = TRANSCRIPT_TEMPLATES.get(content_type, TRANSCRIPT_TEMPLATES["speech"])
+def generate_content_text(content_type: str, index: int) -> str:
+    """Generate realistic test content from templates."""
+    template = CONTENT_TEMPLATES.get(content_type, CONTENT_TEMPLATES["speech"])
     
     # Get the full template content and replace placeholders
-    base_content = template.get("content", "This is a test transcript.")
+    base_content = template.get("content", "This is test content.")
     base_content = base_content.format(index=index)  # Replace {index} placeholder
     
     return base_content

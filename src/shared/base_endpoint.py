@@ -6,7 +6,7 @@ Provides standardized execute method and common patterns for endpoint implementa
 
 from typing import Dict, Any
 from abc import ABC, abstractmethod
-from src.shared.logging_utils import get_logger
+from src.utils.logging_utils import get_logger
 
 
 class BaseEndpoint(ABC):

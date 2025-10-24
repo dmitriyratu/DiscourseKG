@@ -1,9 +1,9 @@
 from prefect import flow, task
 from typing import Dict, Any
-from src.pipeline_config import pipeline_stages, PipelineStages
+from src.pipeline_config import PipelineStages
 from src.shared.flow_processor import FlowProcessor
-from src.shared.logging_utils import get_logger
-from src.discovery.discovery_endpoint import DiscoveryEndpoint
+from src.utils.logging_utils import get_logger
+from src.discover.discover_endpoint import DiscoverEndpoint
 from pathlib import Path
 
 logger = get_logger(__name__)
@@ -14,7 +14,7 @@ flow_name = Path(__file__).stem
 def discover_content(discovery_params: Dict[str, Any]) -> Dict[str, Any]:
     """Task to discover content sources."""
     try:
-        result = DiscoveryEndpoint().execute(discovery_params)
+        result = DiscoverEndpoint().execute(discovery_params)
         return result
     except Exception as e:
         logger.error(f"{flow_name} failed for speaker {discovery_params.get('speaker', 'unknown')}: {str(e)}")
@@ -22,7 +22,7 @@ def discover_content(discovery_params: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @flow
-def discovery_flow(speaker: str, start_date: str, end_date: str):
+def discover_flow(speaker: str, start_date: str, end_date: str):
     """
     Discover items and create initial pipeline states.
     

@@ -7,13 +7,13 @@ following the same patterns as the existing logging utilities.
 
 import json
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
 from pydantic import BaseModel, Field
 
 from src.app_config import config
-from src.shared.logging_utils import get_logger
-from src.pipeline_config import pipeline_config, pipeline_stages, PipelineStageStatus
+from src.utils.logging_utils import get_logger
+from src.pipeline_config import pipeline_config, PipelineStages, PipelineStageStatus
 
 logger = get_logger(__name__)
 
@@ -24,7 +24,7 @@ class PipelineState(BaseModel):
     # Core identifiers
     id: str = Field(..., description="Unique ID from raw data (matches the 'id' field in raw JSON files)")
     scrape_cycle: str = Field(..., description="Hourly timestamp when scraped (YYYY-MM-DD_HH:00:00)")
-    file_path: Optional[str] = Field(None, description="Path to current stage's output file (relative to project root)")
+    file_paths: Dict[str, str] = Field(default_factory=dict, description="File paths for each completed stage (stage_name -> file_path)")
     source_url: Optional[str] = Field(None, description="Original source URL (for deduplication and audit trail)")
     
     # Content metadata
@@ -44,6 +44,16 @@ class PipelineState(BaseModel):
     processing_time_seconds: Optional[float] = Field(None, description="Total processing time across all stages")
     retry_count: int = Field(default=0, description="Number of times this record has been retried")
 
+    def get_current_file_path(self) -> Optional[str]:
+        """Get file path for the latest completed stage"""
+        if self.latest_completed_stage:
+            return self.file_paths.get(self.latest_completed_stage)
+        return None
+    
+    def get_file_path_for_stage(self, stage: str) -> Optional[str]:
+        """Get file path for a specific stage"""
+        return self.file_paths.get(stage)
+
 
 class PipelineStateManager:
     """Manages pipeline state tracking for data processing"""
@@ -57,15 +67,20 @@ class PipelineStateManager:
         """Create a new pipeline state for a data point"""
         now = datetime.now().isoformat()
         
+        # Initialize file_paths with initial file_path if provided
+        file_paths = {}
+        if file_path:
+            file_paths[PipelineStages.DISCOVER.value] = file_path
+        
         state = PipelineState(
             id=id,
             scrape_cycle=scrape_cycle,
-            file_path=file_path,
+            file_paths=file_paths,
             source_url=source_url,
             speaker=speaker,
             content_type=content_type,
-            latest_completed_stage=pipeline_stages.DISCOVERY,
-            next_stage=pipeline_stages.SCRAPE,
+            latest_completed_stage=PipelineStages.DISCOVER.value,
+            next_stage=PipelineStages.SCRAPE.value,
             created_at=now,
             updated_at=now
         )
@@ -120,9 +135,11 @@ class PipelineStateManager:
                     else:
                         state_dict["processing_time_seconds"] = round(processing_time, 2)
                 
-                # Update file_path for any stage
+                # Update file_paths for the specific stage
                 if file_path:
-                    state_dict["file_path"] = file_path
+                    if "file_paths" not in state_dict:
+                        state_dict["file_paths"] = {}
+                    state_dict["file_paths"][stage] = file_path
                 
                 # Handle stage completion or failure
                 if status == PipelineStageStatus.COMPLETED:

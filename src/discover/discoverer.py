@@ -1,7 +1,7 @@
 """
-Discovery agent for finding content sources.
+Discoverer for finding content sources.
 
-This agent handles the discovery of content sources for the KG-Sentiment platform.
+This module handles the discovery of content sources for the KG-Sentiment platform.
 Currently uses mock discovery - will be replaced with real agent-based discovery.
 """
 
@@ -9,22 +9,22 @@ import time
 from datetime import datetime
 from typing import Dict, Any, List
 from src.shared.pipeline_state import PipelineStateManager
-from src.shared.logging_utils import get_logger
+from src.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
 
-class DiscoveryAgent:
+class Discoverer:
     """
-    Discovery agent for finding content sources.
+    Discoverer for finding content sources.
     
-    This agent handles the discovery of content sources for the
+    This class handles the discovery of content sources for the
     knowledge graph platform. Currently uses mock discovery but
     will be replaced with real agent-based discovery.
     """
     
     def __init__(self):
-        logger.debug("DiscoveryAgent initialized")
+        logger.debug("Discoverer initialized")
     
     def discover_content(self, discovery_params: Dict[str, Any]) -> Dict[str, Any]:
         """Discover content sources based on the provided parameters."""
@@ -86,3 +86,4 @@ class DiscoveryAgent:
         logger.debug(f"Successfully discovered {len(discovered_items)} items ({processing_time}s)")
         
         return result
+

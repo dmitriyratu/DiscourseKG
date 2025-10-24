@@ -23,7 +23,12 @@ class CategorizeEndpoint(BaseEndpoint):
             
             # Load summary data
             data_loader = DataLoader()
-            summary_text = data_loader.extract_data_field(item['file_path'], 'summary')
+            # Get file path for the latest completed stage (should be summarize)
+            current_file_path = item.get('file_paths', {}).get(item.get('latest_completed_stage'))
+            if not current_file_path:
+                raise ValueError(f"No file path found for latest completed stage {item.get('latest_completed_stage')} for item {item['id']}")
+            
+            summary_text = data_loader.extract_stage_output(current_file_path, PipelineStages.SUMMARIZE)
             
             # Validate summary content
             if not summary_text or not summary_text.strip():
@@ -32,7 +37,7 @@ class CategorizeEndpoint(BaseEndpoint):
             # Create input structure for categorization
             categorization_input = {
                 "id": item['id'],
-                "transcript": summary_text
+                "scrape": summary_text
             }
             
             # Process through categorization
@@ -43,11 +48,11 @@ class CategorizeEndpoint(BaseEndpoint):
             return self._create_success_response(
                 id=item['id'],
                 result=result,
-                stage=PipelineStages.CATEGORIZE
+                stage=PipelineStages.CATEGORIZE.value
             )
             
         except Exception as e:
             self.logger.error(f"Categorization failed for item {item['id']}: {str(e)}", 
-                             extra={'item_id': item['id'], 'stage': PipelineStages.CATEGORIZE, 'error_type': 'endpoint_error'})
+                             extra={'item_id': item['id'], 'stage': PipelineStages.CATEGORIZE.value, 'error_type': 'endpoint_error'})
             # Let exception bubble up to flow processor
             raise

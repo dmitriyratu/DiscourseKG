@@ -7,7 +7,7 @@ Currently uses mock data generation - will be replaced with real scraping.
 
 from typing import Dict, Any
 from tests.transcript_generator import generate_test_transcript
-from src.shared.logging_utils import get_logger
+from src.utils.logging_utils import get_logger
 from src.schemas import ScrapingResult, ScrapingData
 
 logger = get_logger(__name__)
@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 
 class Scraper:
     """
-    Scraper implementation for collecting speaker transcripts.
+    Scraper implementation for collecting speaker content.
     
     This class handles the scraping of content from web sources for the
     knowledge graph platform. Currently uses mock data generation but
@@ -32,22 +32,25 @@ class Scraper:
         
         logger.debug(f"Starting scraping for URL: {url}")
         
-        # Generate mock transcript using existing item data
-        transcript_data = generate_test_transcript(item, content_type)
+        # Generate mock scrape content using existing item data
+        scrape_data = generate_test_transcript(item, content_type)
         
-        # Create structured result using schema
+        return self._create_result(scrape_data)
+    
+    def _create_result(self, scrape_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Helper to create ScrapingResult."""
         scraping_data = ScrapingData(
-            title=transcript_data['title'],
-            date=transcript_data['date'],
-            event_date=transcript_data['event_date'],
-            type=transcript_data['type'],
-            source_url=transcript_data['source_url'],
-            timestamp=transcript_data['timestamp'],
-            transcript=transcript_data['transcript']
+            title=scrape_data['title'],
+            date=scrape_data['date'],
+            event_date=scrape_data['event_date'],
+            type=scrape_data['type'],
+            source_url=scrape_data['source_url'],
+            timestamp=scrape_data['timestamp'],
+            scrape=scrape_data['scrape']
         )
         
         result = ScrapingResult(
-            id=transcript_data['id'],
+            id=scrape_data['id'],
             success=True,
             data=scraping_data
         )

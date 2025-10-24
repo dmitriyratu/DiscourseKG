@@ -1,8 +1,8 @@
 from prefect import flow, task
 from typing import Dict, Any
-from src.pipeline_config import pipeline_stages, PipelineStages
+from src.pipeline_config import PipelineStages
 from src.shared.flow_processor import FlowProcessor
-from src.shared.logging_utils import get_logger
+from src.utils.logging_utils import get_logger
 from src.summarize.summarize_endpoint import SummarizeEndpoint
 from pathlib import Path
 
@@ -27,8 +27,8 @@ def summarize_flow():
     logger.info(f"Starting {flow_name}")
     processor = FlowProcessor(flow_name)
     processor.process_items(
-        stage=pipeline_stages.SUMMARIZE,
+        stage=PipelineStages.SUMMARIZE.value,
         task_func=summarize_item,
-        data_type=PipelineStages.SUMMARIZE
+        data_type=PipelineStages.SUMMARIZE.value
     )
     logger.info(f"Completed {flow_name}")

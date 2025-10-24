@@ -100,7 +100,7 @@ class CategoryWithEntities(BaseModel):
 
 class CategorizationOutput(BaseModel):
     """Output schema for the entire categorization"""
-    categories: List[CategoryWithEntities] = Field(description="List of categories with entities")
+    categorize: List[CategoryWithEntities] = Field(description="List of categories with entities")
 
 
 class ScrapingData(BaseModel):
@@ -111,7 +111,7 @@ class ScrapingData(BaseModel):
     type: str = Field(..., description="Type of content (speech, interview, debate)")
     source_url: str = Field(..., description="Original source URL")
     timestamp: str = Field(..., description="Content timestamp")
-    transcript: str = Field(..., description="The scraped transcript text")
+    scrape: str = Field(..., description="The scraped content text")
 
 
 class ScrapingResult(BaseModel):
@@ -124,7 +124,7 @@ class ScrapingResult(BaseModel):
 
 class SummarizationData(BaseModel):
     """Summarized content data."""
-    summary: str = Field(..., description="The summarized text")
+    summarize: str = Field(..., description="The summarized text")
     original_word_count: int = Field(..., description="Word count of original text")
     summary_word_count: int = Field(..., description="Word count of summary")
     compression_ratio: float = Field(..., description="Ratio of summary length to original length")

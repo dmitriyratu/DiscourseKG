@@ -10,10 +10,10 @@ from typing import Dict, Any, Callable
 from prefect import task
 
 from tasks.orchestration import get_items
-from src.pipeline_config import pipeline_stages, PipelineStageStatus, PipelineStages
+from src.pipeline_config import PipelineStageStatus, PipelineStages
 from src.shared.pipeline_state import PipelineStateManager
 from src.shared.persistence import save_data
-from src.shared.logging_utils import get_logger
+from src.utils.logging_utils import get_logger
 
 
 class FlowProcessor:

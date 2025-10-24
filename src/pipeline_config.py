@@ -17,11 +17,11 @@ class PipelineStageStatus(str, Enum):
     INVALIDATED = "INVALIDATED"
 
 
-class PipelineStages:
-    """Pipeline stage definitions - values match directory names"""
-    DISCOVERY = "discovery"
+class PipelineStages(str, Enum):
+    """Pipeline stage definitions - values match both directory names AND output field names"""
+    DISCOVER = "discover"
     SCRAPE = "scrape"
-    SUMMARIZE = "summarize" 
+    SUMMARIZE = "summarize"
     CATEGORIZE = "categorize"
 
 
@@ -30,7 +30,7 @@ class PipelineConfig:
     
     # Define stage flow (what comes after each stage)
     STAGE_FLOW = {
-        PipelineStages.DISCOVERY: PipelineStages.SCRAPE,
+        PipelineStages.DISCOVER: PipelineStages.SCRAPE,
         PipelineStages.SCRAPE: PipelineStages.SUMMARIZE,
         PipelineStages.SUMMARIZE: PipelineStages.CATEGORIZE, 
         PipelineStages.CATEGORIZE: None  # Pipeline complete
@@ -51,5 +51,4 @@ class PipelineConfig:
 
 
 # Export for easy importing
-pipeline_stages = PipelineStages()
 pipeline_config = PipelineConfig()

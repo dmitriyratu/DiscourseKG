@@ -6,9 +6,10 @@ from pathlib import Path
 import json
 from datetime import datetime
 from typing import Any, Optional
+import pyprojroot
 
 from src.app_config import config
-from src.shared.logging_utils import get_logger
+from src.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
@@ -32,5 +33,7 @@ def save_data(id: str, data: Any, data_type: str, speaker: str, content_type: st
     with open(file_path, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
     
-    logger.debug(f"Saved {data_type} data to {file_path}")
-    return str(file_path)
+    # Return path relative to project root
+    relative_path = file_path.relative_to(pyprojroot.here())
+    logger.debug(f"Saved {data_type} data to {relative_path}")
+    return str(relative_path).replace('\\', '/')

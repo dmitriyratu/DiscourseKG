@@ -1,8 +1,8 @@
 from prefect import flow, task
 from typing import Dict, Any
-from src.pipeline_config import pipeline_stages, PipelineStages
+from src.pipeline_config import PipelineStages
 from src.shared.flow_processor import FlowProcessor
-from src.shared.logging_utils import get_logger
+from src.utils.logging_utils import get_logger
 from src.scrape.scrape_endpoint import ScrapeEndpoint
 from pathlib import Path
 
@@ -27,8 +27,8 @@ def scrape_flow():
     logger.info(f"Starting {flow_name}")
     processor = FlowProcessor(flow_name)
     processor.process_items(
-        stage=pipeline_stages.SCRAPE,
+        stage=PipelineStages.SCRAPE.value,
         task_func=scrape_item,
-        data_type=PipelineStages.SCRAPE
+        data_type=PipelineStages.SCRAPE.value
     )
     logger.info(f"Completed {flow_name}")

@@ -5,9 +5,9 @@ Simple discovery function that will be called by an orchestrator.
 """
 
 from typing import Dict, Any
-from src.discovery.discovery_agent import DiscoveryAgent
+from src.discover.discoverer import Discoverer
 
 
 def discover_content(discovery_params: Dict[str, Any]) -> Dict[str, Any]:
     """Discover content from the provided parameters."""
-    return DiscoveryAgent().discover_content(discovery_params)
+    return Discoverer().discover_content(discovery_params)

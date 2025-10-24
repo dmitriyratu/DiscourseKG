@@ -7,7 +7,7 @@ Provides clean task orchestration using stage-specific processors.
 from typing import List, Dict, Any
 
 from src.shared.pipeline_state import PipelineStateManager
-from src.shared.logging_utils import get_logger
+from src.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
 

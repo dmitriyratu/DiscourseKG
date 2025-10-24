@@ -24,8 +24,8 @@ class ScrapeEndpoint(BaseEndpoint):
             result = scrape_content(item)
             
             # Calculate word count
-            transcript = result.get('transcript', '')
-            word_count = len(transcript.split()) if transcript else 0
+            scrape = result.get('scrape', '')
+            word_count = len(scrape.split()) if scrape else 0
             result['word_count'] = word_count
             
             self.logger.debug(f"Successfully scraped: {url} -> {result.get('id')} ({word_count} words)")
@@ -33,7 +33,7 @@ class ScrapeEndpoint(BaseEndpoint):
             return self._create_success_response(
                 id=result.get('id'),
                 result=result,
-                stage=PipelineStages.SCRAPE
+                stage=PipelineStages.SCRAPE.value
             )
             
         except Exception as e:

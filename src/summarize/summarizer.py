@@ -1,7 +1,7 @@
 """
-Extractive text summarization for knowledge graph analysis.
+Text summarization for knowledge graph analysis.
 
-This module provides extractive summarization that preserves original content
+This module provides summarization that preserves original content
 by selecting the most important sentences based on semantic similarity and position.
 Optimized for speech/communication content analysis.
 """
@@ -17,9 +17,9 @@ from src.schemas import SummarizationResult, SummarizationData
 from src.app_config import config
 
 
-class ExtractiveSummarizer:
+class Summarizer:
     """
-    Extractive summarizer optimized for speech content analysis.
+    Summarizer optimized for speech content analysis.
     Selects the most important sentences while preserving original content
     and targeting specific word counts for knowledge graph processing.
     """
@@ -41,7 +41,7 @@ class ExtractiveSummarizer:
         self.model = SentenceTransformer(config.SUMMARIZER_MODEL)
     
     def summarize(self, id: str, text: str, target_tokens: int) -> dict:
-        """Summarize text to target token count using extractive methods."""
+        """Summarize text to target token count."""
         start_time = time.time()
         original_tokens = len(self.tokenizer.encode(text))
         
@@ -64,7 +64,7 @@ class ExtractiveSummarizer:
                       start_time: float, target_tokens: int) -> dict:
         """Helper to create SummarizationResult."""
         summarization_data = SummarizationData(
-            summary=summary,
+            summarize=summary,
             original_word_count=len(original.split()),
             summary_word_count=len(summary.split()),
             compression_ratio=compression,

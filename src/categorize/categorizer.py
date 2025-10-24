@@ -11,15 +11,15 @@ from src.schemas import (
     PolicyDomain, EntityType, SentimentLevel, 
     EntityMention, CategoryWithEntities, CategorizationOutput, CategorizationResult
 )
-from src.shared.logging_utils import get_logger
+from src.utils.logging_utils import get_logger
 from src.pipeline_config import PipelineStages
 
 logger = get_logger(__name__)
 
 
-class ContentCategorizer:
+class Categorizer:
     """
-    ContentCategorizer implementation using LangChain for structured output parsing.
+    Categorizer implementation using LangChain for structured output parsing.
     
     This class handles the categorization of speech/communication data for the
     knowledge graph platform, creating a hierarchical structure of categories
@@ -37,7 +37,7 @@ class ContentCategorizer:
         
         self.llm = ChatOpenAI(**llm_kwargs)
         
-        logger.debug(f"ContentCategorizer initialized with model: {config.OPENAI_MODEL}")
+        logger.debug(f"Categorizer initialized with model: {config.OPENAI_MODEL}")
         logger.debug(f"Using temperature: {config.OPENAI_TEMPERATURE}, max_tokens: {config.OPENAI_MAX_TOKENS}")
         
         # Create output parser for structured results
@@ -111,21 +111,21 @@ Return structured JSON with categories containing entities and their supporting 
         """Categorize content from a dictionary."""
         start_time = time.time()
         
-        transcript = content_data.get('transcript', '')
+        scrape = content_data.get('scrape', '')
         title = content_data.get('title', 'Unknown')
         speakers = content_data.get('speakers', ['Unknown'])
         date = content_data.get('date', 'Unknown')
         
-        if not transcript:
-            raise ValueError("No transcript found in content data")
+        if not scrape:
+            raise ValueError("No scrape content found in content data")
         
         try:
             logger.debug(f"Starting categorization for content: {content_data.get('id', 'unknown')}")
-            logger.debug(f"Processing transcript: {len(transcript)} chars, truncated to {config.MAX_TRANSCRIPT_LENGTH}")
+            logger.debug(f"Processing scrape content: {len(scrape)} chars, truncated to {config.MAX_TRANSCRIPT_LENGTH}")
             
             # Run the chain with all required fields
             result = self.chain.invoke({
-                "content": transcript[:config.MAX_TRANSCRIPT_LENGTH],
+                "content": scrape[:config.MAX_TRANSCRIPT_LENGTH],
                 "title": title,
                 "speakers": speakers,
                 "date": date
@@ -133,30 +133,34 @@ Return structured JSON with categories containing entities and their supporting 
             
             logger.debug(f"LLM response received: {len(result.dict().get('categories', []))} categories")
             
-            # Create structured result using schema
-            categorization_result = CategorizationResult(
-                id=content_data.get('id', 'unknown'),
-                success=True,
-                data=result,
-                metadata={
-                    'model_used': config.OPENAI_MODEL
-                }
-            )
-            
-            categories_count = len(categorization_result.data.categories)
-            entities_count = sum(len(cat.entities) for cat in categorization_result.data.categories)
-            
-            logger.debug(f"Successfully categorized content: {categories_count} categories, {entities_count} entities")
-            
-            return categorization_result.model_dump()
+            return self._create_result(content_data.get('id', 'unknown'), result)
             
         except Exception as e:
             logger.error(f"LangChain categorization failed for content {content_data.get('id', 'unknown')}: {str(e)}", 
-                        extra={'item_id': content_data.get('id', 'unknown'), 'stage': PipelineStages.CATEGORIZE, 
-                               'error_type': 'langchain_error', 'transcript_length': len(transcript)})
+                        extra={'item_id': content_data.get('id', 'unknown'), 'stage': PipelineStages.CATEGORIZE.value, 
+                               'error_type': 'langchain_error', 'scrape_length': len(scrape)})
             # Let exception bubble up to flow processor
             raise
     
+    def _create_result(self, id: str, categorization_data: CategorizationOutput) -> Dict[str, Any]:
+        """Helper to create CategorizationResult."""
+        categorization_result = CategorizationResult(
+            id=id,
+            success=True,
+            data=categorization_data,
+            metadata={
+                'model_used': config.OPENAI_MODEL
+            }
+        )
+        
+        categories_count = len(categorization_result.data.categorize)
+        entities_count = sum(len(cat.entities) for cat in categorization_result.data.categorize)
+        
+        logger.debug(f"Successfully categorized content: {categories_count} categories, {entities_count} entities")
+        
+        return categorization_result.model_dump()
+    
+
 
 
 
