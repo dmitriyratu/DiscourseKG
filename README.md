@@ -1,1 +1,1 @@
-# KG-Sentiment
+# DiscourseKG

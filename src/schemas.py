@@ -1,7 +1,7 @@
 """
 Data schemas for political communication categorization and sentiment analysis.
 
-This module defines the core data structures used throughout the KG-Sentiment platform
+This module defines the core data structures used throughout the DiscourseKG platform
 for categorizing political communications, extracting entities, and analyzing sentiment.
 """
 

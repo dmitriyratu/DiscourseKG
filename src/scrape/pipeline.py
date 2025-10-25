@@ -1,5 +1,5 @@
 """
-Scraping pipeline component for KG-Sentiment platform.
+Scraping pipeline component for DiscourseKG platform.
 
 Simple scraping function that will be called by an orchestrator.
 """

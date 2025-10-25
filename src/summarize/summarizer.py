@@ -15,6 +15,9 @@ from typing import Optional
 
 from src.schemas import SummarizationResult, SummarizationData
 from src.app_config import config
+from src.utils.logging_utils import get_logger
+
+logger = get_logger(__name__)
 
 
 class Summarizer:

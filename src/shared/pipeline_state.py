@@ -1,5 +1,5 @@
 """
-Pipeline state management utilities for KG-Sentiment platform.
+Pipeline state management utilities for DiscourseKG platform.
 
 This module provides state tracking for the data processing pipeline,
 following the same patterns as the existing logging utilities.

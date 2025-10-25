@@ -1,5 +1,5 @@
 """
-Simple test scrape content generator for KG-Sentiment platform.
+Simple test scrape content generator for DiscourseKG platform.
 
 Just generates mock scrape data - no file I/O, no pipeline state creation.
 """

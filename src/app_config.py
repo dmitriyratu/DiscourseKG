@@ -1,5 +1,5 @@
 """
-Configuration settings for the KG-Sentiment platform.
+Configuration settings for the DiscourseKG platform.
 """
 
 import os
@@ -9,7 +9,7 @@ from pyprojroot import here
 
 
 class Config:
-    """Configuration class for the KG-Sentiment platform."""
+    """Configuration class for the DiscourseKG platform."""
 
     load_dotenv()
     
@@ -21,10 +21,6 @@ class Config:
     OPENAI_MODEL: str = "gpt-4o-mini"
     OPENAI_MAX_TOKENS: int = 2000
     OPENAI_TEMPERATURE: float = 0.1  # Low temperature for consistent results
-    
-    # AWS Configuration
-    AWS_REGION: str = os.getenv('AWS_REGION', 'us-east-1')
-    S3_BUCKET: str = os.getenv('S3_BUCKET', 'kg-sentiment-data')
     
     # Data Paths - Use absolute paths from project root
     PROJECT_ROOT = here()

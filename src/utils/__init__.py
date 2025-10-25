@@ -1,2 +1,2 @@
-"""Utility modules for KG-Sentiment platform."""
+"""Utility modules for DiscourseKG platform."""
 

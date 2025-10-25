@@ -1,5 +1,5 @@
 """
-Discovery pipeline component for KG-Sentiment platform.
+Discovery pipeline component for DiscourseKG platform.
 
 Simple discovery function that will be called by an orchestrator.
 """

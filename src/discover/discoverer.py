@@ -1,7 +1,7 @@
 """
 Discoverer for finding content sources.
 
-This module handles the discovery of content sources for the KG-Sentiment platform.
+This module handles the discovery of content sources for the DiscourseKG platform.
 Currently uses mock discovery - will be replaced with real agent-based discovery.
 """
 

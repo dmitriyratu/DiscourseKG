@@ -1,1 +1,1 @@
-# Summarization module for KG-Sentiment platform
+# Summarization module for DiscourseKG platform

@@ -1,5 +1,5 @@
 """
-Logging utilities for the KG-Sentiment platform.
+Logging utilities for the DiscourseKG platform.
 """
 
 import logging

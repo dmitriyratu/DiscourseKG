@@ -1,5 +1,5 @@
 """
-Categorization pipeline component for KG-Sentiment platform.
+Categorization pipeline component for DiscourseKG platform.
 
 Simple categorization function that will be called by an orchestrator.
 """

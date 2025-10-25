@@ -1,5 +1,5 @@
 """
-Summarization pipeline component for KG-Sentiment platform.
+Summarization pipeline component for DiscourseKG platform.
 
 Simple summarization function that will be called by an orchestrator.
 """

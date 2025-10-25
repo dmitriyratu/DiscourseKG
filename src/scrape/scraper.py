@@ -1,5 +1,5 @@
 """
-Scraper implementation for KG-Sentiment platform.
+Scraper implementation for DiscourseKG platform.
 
 This class handles the scraping of speaker transcripts from web sources.
 Currently uses mock data generation - will be replaced with real scraping.

@@ -1,5 +1,5 @@
 """
-Pipeline configuration for KG-Sentiment platform.
+Pipeline configuration for DiscourseKG platform.
 
 Defines the pipeline stages and flow
 """
@@ -36,18 +36,10 @@ class PipelineConfig:
         PipelineStages.CATEGORIZE: None  # Pipeline complete
     }
     
-    # First stage to process (after raw data is available)
-    FIRST_PROCESSING_STAGE = PipelineStages.SUMMARIZE
-    
     @classmethod
     def get_next_stage(cls, current_stage: str) -> Optional[str]:
         """Get the next stage after the current one"""
         return cls.STAGE_FLOW.get(current_stage)
-    
-    @classmethod
-    def is_pipeline_complete(cls, next_stage: Optional[str]) -> bool:
-        """Check if the pipeline is complete"""
-        return next_stage is None
 
 
 # Export for easy importing
