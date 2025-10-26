@@ -56,7 +56,7 @@ class FlowProcessor:
             # Save the result
             output_file = save_data(
                 result_data['id'], 
-                result_data['result'],  # Save the complete result including id field
+                result_data['output'],
                 data_type, 
                 speaker=speaker,
                 content_type=content_type
@@ -71,6 +71,14 @@ class FlowProcessor:
                 file_path=output_file
             )
             
+            # Update metadata if available
+            output_obj = result_data.get('output', {})
+            if metadata := output_obj.get('metadata'):
+                manager._update_metadata_naturally(
+                    result_data['id'],
+                    **metadata
+                )
+            
             self.logger.debug(f"Successfully completed {stage} for item {result_data['id']} -> {output_file}")
                 
         except Exception as e:
@@ -83,7 +91,7 @@ class FlowProcessor:
                 'success': True,
                 'id': id,
                 'stage': stage,
-                'result': {
+                'output': {
                     'id': id,
                     'success': False,
                     'data': None,

@@ -20,8 +20,20 @@ class ScrapeEndpoint(BaseEndpoint):
             url = item['source_url']
             self.logger.info(f"Processing scrape request for URL: {url}")
             
+            # Create processing context (immutable)
+            processing_context = {
+                'id': item['id'],
+                'source_url': item['source_url'],
+                'content_type': item.get('content_type', 'speech'),
+                'metadata': {
+                    'title': item.get('title'),
+                    'content_date': item.get('content_date'),
+                    'speaker': item.get('speaker')
+                }
+            }
+            
             # Process through scraping pipeline
-            result = scrape_content(item)
+            result = scrape_content(processing_context)
             
             # Calculate word count
             scrape = result.get('scrape', '')
@@ -37,7 +49,6 @@ class ScrapeEndpoint(BaseEndpoint):
             )
             
         except Exception as e:
-            id = item.get('id', 'unknown')
             self.logger.error(f"Error scraping {item.get('source_url', 'unknown')}: {str(e)}")
             # Let exception bubble up to flow processor
             raise

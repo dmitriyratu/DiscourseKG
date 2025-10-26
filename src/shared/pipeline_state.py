@@ -25,11 +25,13 @@ class PipelineState(BaseModel):
     id: str = Field(..., description="Unique ID from raw data (matches the 'id' field in raw JSON files)")
     scrape_cycle: str = Field(..., description="Hourly timestamp when scraped (YYYY-MM-DD_HH:00:00)")
     file_paths: Dict[str, str] = Field(default_factory=dict, description="File paths for each completed stage (stage_name -> file_path)")
-    source_url: Optional[str] = Field(None, description="Original source URL (for deduplication and audit trail)")
     
     # Content metadata
     speaker: Optional[str] = Field(None, description="Primary speaker name")
     content_type: Optional[str] = Field(None, description="Type of content (speech, debate, interview, etc.)")
+    title: Optional[str] = Field(None, description="Title of the scraped content")
+    content_date: Optional[str] = Field(None, description="Date when the content was created/published")
+    source_url: Optional[str] = Field(None, description="Original source URL")
     
     # Simple stage tracking
     latest_completed_stage: Optional[str] = Field(None, description="Latest successfully completed stage (None, 'raw', 'summarize', 'categorize')")
@@ -127,7 +129,8 @@ class PipelineStateManager:
                 processing_time = None
                 if result_data:
                     processing_time = result_data.get('processing_time_seconds')
-                    error_message = result_data.get('result', {}).get('error_message')
+                    output = result_data.get('output', {})
+                    error_message = output.get('error_message')
                 
                 if processing_time:
                     if state_dict["processing_time_seconds"]:
@@ -166,6 +169,32 @@ class PipelineStateManager:
                 logger.debug(f"Updated {stage} status to {status.value} for data point: {id}")
         else:
             logger.warning(f"Data point not found for update: {id}")
+    
+    def _update_metadata_naturally(self, id: str, **metadata):
+        """Naturally update metadata fields as stages extract information"""
+        states = self._read_all_states()
+        
+        for state_dict in states:
+            if state_dict["id"] == id:
+                state_dict["updated_at"] = datetime.now().isoformat()
+                
+                # Update any provided metadata fields (only if they exist in PipelineState schema)
+                valid_fields = set(PipelineState.model_fields.keys())
+                updated_fields = []
+                
+                for field, value in metadata.items():
+                    if field in valid_fields and value is not None:
+                        state_dict[field] = value
+                        updated_fields.append(field)
+                
+                if updated_fields:
+                    self._write_all_states(states)
+                    logger.debug(f"Naturally updated metadata for {id}: {updated_fields}")
+                else:
+                    logger.debug(f"No valid metadata fields to update for {id}: {list(metadata.keys())}")
+                return
+        
+        logger.warning(f"Data point not found for natural metadata update: {id}")
     
     def get_next_stage_tasks(self, stage: str) -> List[PipelineState]:
         """Get all data points where the next_stage matches the requested stage"""

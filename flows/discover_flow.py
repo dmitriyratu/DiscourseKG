@@ -43,7 +43,7 @@ def discover_flow(speaker: str, start_date: str, end_date: str):
     result_data = result.result()
     
     if result_data['success']:
-        discovered_count = len(result_data['result'].get('discovered_items', []))
+        discovered_count = len(result_data['output'].get('discovered_items', []))
         logger.info(f"Discovery complete - created {discovered_count} pipeline states")
         
         return {

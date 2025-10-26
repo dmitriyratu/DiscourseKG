@@ -7,6 +7,7 @@ from typing import Dict, Any
 from src.shared.base_endpoint import BaseEndpoint
 from src.shared.data_loaders import DataLoader
 from src.categorize.pipeline import process_content
+from src.schemas import CategorizationInput
 from src.pipeline_config import PipelineStages
 
 
@@ -34,14 +35,21 @@ class CategorizeEndpoint(BaseEndpoint):
             if not summary_text or not summary_text.strip():
                 raise ValueError("Empty or invalid summary content")
             
-            # Create input structure for categorization
-            categorization_input = {
-                "id": item['id'],
-                "scrape": summary_text
+            # Create and validate input structure for categorization
+            categorization_input = CategorizationInput(
+                title=item.get('title', 'Unknown'),
+                content_date=item.get('content_date', 'Unknown'),
+                content=summary_text
+            )
+            
+            # Create processing context (immutable)
+            processing_context = {
+                'id': item['id'],
+                'categorization_input': categorization_input
             }
             
             # Process through categorization
-            result = process_content(categorization_input)
+            result = process_content(processing_context)
             
             self.logger.debug(f"Successfully categorized item {item['id']}")
             

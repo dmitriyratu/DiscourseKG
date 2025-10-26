@@ -27,7 +27,7 @@ class BaseEndpoint(ABC):
             'success': True,
             'id': id,
             'stage': stage,
-            'result': result,
+            'output': result,  # Changed from 'result' to 'output' to avoid confusion with Prefect's .result()
             'input_data': input_data
         }
     

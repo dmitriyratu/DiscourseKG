@@ -11,7 +11,7 @@ import tiktoken
 import time
 from sentence_transformers import SentenceTransformer, util
 from nltk.tokenize import sent_tokenize
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from src.schemas import SummarizationResult, SummarizationData
 from src.app_config import config
@@ -43,28 +43,33 @@ class Summarizer:
         self.tokenizer = tiktoken.get_encoding(config.SUMMARIZER_TOKENIZER)
         self.model = SentenceTransformer(config.SUMMARIZER_MODEL)
     
-    def summarize(self, id: str, text: str, target_tokens: int) -> dict:
+    def summarize(self, processing_context: Dict[str, Any]) -> dict:
         """Summarize text to target token count."""
         start_time = time.time()
+        
+        # Extract what we need from the processing context
+        id = processing_context['id']
+        text = processing_context['text']
+        target_tokens = processing_context['target_tokens']
+        
         original_tokens = len(self.tokenizer.encode(text))
         
         try:
             if not text or not text.strip():
-                return self._create_result(id, text, "", 0, 0.0, start_time, target_tokens, False, "Empty input")
+                return self._create_result(id, text, "", 0.0, target_tokens)
             
             summary_text = text if original_tokens <= target_tokens else self._do_summarization(text, target_tokens)
-            summary_tokens = len(self.tokenizer.encode(summary_text))
             compression_ratio = len(summary_text) / len(text) if text else 0.0
             
-            return self._create_result(id, text, summary_text, summary_tokens, compression_ratio, start_time, target_tokens)
+            return self._create_result(id, text, summary_text, compression_ratio, target_tokens)
             
         except Exception as e:
             logger.error(f"Summarization failed for content {id}: {str(e)}")
             # Let exception bubble up to flow processor
             raise
     
-    def _create_result(self, id: str, original: str, summary: str, summary_tokens: int, compression: float, 
-                      start_time: float, target_tokens: int) -> dict:
+    def _create_result(self, id: str, original: str, summary: str, compression: float, 
+                      target_tokens: int) -> dict:
         """Helper to create SummarizationResult."""
         summarization_data = SummarizationData(
             summarize=summary,
@@ -77,8 +82,10 @@ class Summarizer:
         result = SummarizationResult(
             id=id,
             success=True,
-            data=summarization_data
+            data=summarization_data,
+            metadata={}
         )
+        
         return result.model_dump()
     
     def _do_summarization(self, text: str, target_tokens: int) -> str:

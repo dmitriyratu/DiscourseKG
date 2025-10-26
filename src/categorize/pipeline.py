@@ -8,6 +8,6 @@ from typing import Dict, Any
 from src.categorize.categorizer import Categorizer
 
 
-def process_content(content_data: Dict[str, Any]) -> Dict[str, Any]:
+def process_content(processing_context: Dict[str, Any]) -> Dict[str, Any]:
     """Categorize content data."""
-    return Categorizer().categorize_content(content_data)
+    return Categorizer().categorize_content(processing_context)

@@ -2,14 +2,12 @@ from typing import Dict, List, Any
 import time
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import PydanticOutputParser
-from langchain_core.runnables import RunnablePassthrough
-from pydantic import BaseModel, Field
+from langchain_core.runnables import RunnableLambda
 
 from src.app_config import config
 from src.schemas import (
-    PolicyDomain, EntityType, SentimentLevel, 
-    EntityMention, CategoryWithEntities, CategorizationOutput, CategorizationResult
+    TopicCategory, EntityType, SentimentLevel, 
+    EntityMention, TopicMention, CategorizationInput, CategorizationOutput, CategorizationResult
 )
 from src.utils.logging_utils import get_logger
 from src.pipeline_config import PipelineStages
@@ -35,19 +33,20 @@ class Categorizer:
             "api_key": config.OPENAI_API_KEY
         }
         
-        self.llm = ChatOpenAI(**llm_kwargs)
-        
         logger.debug(f"Categorizer initialized with model: {config.OPENAI_MODEL}")
         logger.debug(f"Using temperature: {config.OPENAI_TEMPERATURE}, max_tokens: {config.OPENAI_MAX_TOKENS}")
+        logger.debug("Using structured output with automatic Pydantic validation")
         
-        # Create output parser for structured results
-        self.output_parser = PydanticOutputParser(pydantic_object=CategorizationOutput)
+        # Create LLM with structured output
+        llm = ChatOpenAI(**llm_kwargs)
+        llm_structured = llm.with_structured_output(CategorizationOutput, include_raw=False)
         
         # Create prompt template
-        self.prompt_template = ChatPromptTemplate.from_messages([
-            ("system", """You are an expert content analyst specializing in political and business communications. 
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are an expert content analyst specializing in communications analysis across all domains.
             
-            {format_instructions}
+            INPUT FIELD DESCRIPTIONS:
+            {field_descriptions}
             
             ENTITY TYPE OPTIONS:
             {entity_types}
@@ -55,90 +54,106 @@ class Categorizer:
             SENTIMENT OPTIONS:
             {sentiment_options}
             
-            POLICY DOMAINS:
-            {policy_domains}
+            TOPIC CATEGORIES:
+            {topic_categories}
+            
+            Return a JSON object with an "entities" array. Each entity should have:
+            - entity_name: canonical name
+            - entity_type: one of the entity types above
+            - mentions: array of mention objects, ONE per unique topic
+            
+            Each mention object should have:
+            - topic: topic category (must be unique per entity)
+            - sentiment: sentiment level
+            - context: summary of discussion
+            - quotes: array of verbatim quotes
             """),
-            ("user", """Analyze the following political communication and extract structured entity mentions:
+            ("user", """Analyze the following communication and extract structured entity mentions:
 
 TITLE: {title}
-SPEAKERS: {speakers}
-DATE: {date}
+CONTENT DATE: {content_date}
 CONTENT: {content}
 
 INSTRUCTIONS:
-1. Identify all significant entities mentioned (people, companies, countries, policy tools)
-2. For each entity, determine its type and sentiment
+1. Identify all significant entities mentioned (organizations, locations, people, programs, products, events)
+2. For each unique entity, determine its type
 3. Use canonical names for entities (e.g., "Apple Inc." → "Apple", "President Biden" → "Joe Biden")
-4. Only classify sentiment when clearly expressed by the speaker
-5. Extract direct quotes from the original text that best illustrate how the entity was discussed
+4. For each entity, create ONE MENTION per unique topic category where it was discussed
+5. If an entity is discussed in multiple topics, include multiple mention objects within that entity's mentions array
+6. Only classify sentiment when clearly expressed by the speaker
+
+OUTPUT STRUCTURE:
+- Group by entity (not by topic)
+- Each entity appears once with a mentions array
+- Each mention represents one topic where that entity was discussed
+- Sentiment/context/quotes are specific to each topic mention
 
 CRITICAL QUOTE EXTRACTION RULES:
    - Quotes MUST be verbatim excerpts from the original text - copy exactly as written
    - Do NOT paraphrase, summarize, or modify the original language
-   - Do NOT create new text or fill in missing words
-   - If a quote contains partial sentences, include ellipsis (...) to indicate truncation
    - Choose quotes that best show the speaker's sentiment or key context about the entity
-   - Include 1-3 most relevant quotes per entity
-   - If no direct quotes exist for an entity, use an empty quotes array []
-   - Verify each quote appears exactly as written in the original text
+   - Include 1-3 most relevant quotes per mention
+   - If no direct quotes exist, use an empty quotes array []
 
-Return structured JSON with categories containing entities and their supporting quotes.""")
+Return structured JSON with entities containing their topic mentions.
+
+CRITICAL: Each entity must have EXACTLY ONE mention per unique topic. Do not repeat topics for the same entity.""")
         ])
         
-        # Create the chain
+        # Create LCEL chain with automatic enum guidance injection
         self.chain = (
             {
-                "format_instructions": lambda x: self.output_parser.get_format_instructions(),
-                "entity_types": lambda x: self._get_enum_guidance(EntityType),
-                "sentiment_options": lambda x: self._get_enum_guidance(SentimentLevel),
-                "policy_domains": lambda x: self._get_enum_guidance(PolicyDomain),
-                "title": RunnablePassthrough(),
-                "speakers": RunnablePassthrough(),
-                "date": RunnablePassthrough(),
-                "content": RunnablePassthrough(),
+                "field_descriptions": RunnableLambda(lambda _: self._get_field_guidance()),
+                "entity_types": RunnableLambda(lambda _: self._get_enum_guidance(EntityType)),
+                "sentiment_options": RunnableLambda(lambda _: self._get_enum_guidance(SentimentLevel)),
+                "topic_categories": RunnableLambda(lambda _: self._get_enum_guidance(TopicCategory)),
+                "title": lambda x: x["title"],
+                "content_date": lambda x: x["content_date"],
+                "content": lambda x: x["content"][:config.MAX_TRANSCRIPT_LENGTH]
             }
-            | self.prompt_template
-            | self.llm
-            | self.output_parser
+            | prompt
+            | llm_structured
         )
     
     def _get_enum_guidance(self, enum_class) -> str:
         """Generate guidance text from enum descriptions"""
         return "\n".join(f"  {item.value}: {item.description}" for item in enum_class)
     
+    def _get_field_guidance(self) -> str:
+        """Generate guidance text from CategorizationInput schema"""
+        return "\n".join(f"  {name}: {field.description}" 
+                        for name, field in CategorizationInput.model_fields.items())
     
-    def categorize_content(self, content_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Categorize content from a dictionary."""
+    def categorize_content(self, processing_context: Dict[str, Any]) -> Dict[str, Any]:
+        """Categorize content from processing context."""
         start_time = time.time()
         
-        scrape = content_data.get('scrape', '')
-        title = content_data.get('title', 'Unknown')
-        speakers = content_data.get('speakers', ['Unknown'])
-        date = content_data.get('date', 'Unknown')
+        # Extract what we need from the processing context
+        id = processing_context['id']
+        categorization_input = processing_context['categorization_input']
         
-        if not scrape:
-            raise ValueError("No scrape content found in content data")
+        if not categorization_input.content:
+            raise ValueError("No content found in categorization input")
         
         try:
-            logger.debug(f"Starting categorization for content: {content_data.get('id', 'unknown')}")
-            logger.debug(f"Processing scrape content: {len(scrape)} chars, truncated to {config.MAX_TRANSCRIPT_LENGTH}")
+            logger.debug(f"Starting categorization for content (id: {id})")
+            logger.debug(f"Processing content: {len(categorization_input.content)} chars, truncated to {config.MAX_TRANSCRIPT_LENGTH}")
             
-            # Run the chain with all required fields
+            # Invoke chain with structured output (automatic validation & retry)
             result = self.chain.invoke({
-                "content": scrape[:config.MAX_TRANSCRIPT_LENGTH],
-                "title": title,
-                "speakers": speakers,
-                "date": date
+                "title": categorization_input.title,
+                "content_date": categorization_input.content_date,
+                "content": categorization_input.content
             })
             
-            logger.debug(f"LLM response received: {len(result.dict().get('categories', []))} categories")
+            logger.debug(f"LLM response received: {len(result.entities)} entities")
             
-            return self._create_result(content_data.get('id', 'unknown'), result)
+            return self._create_result(id, result)
             
         except Exception as e:
-            logger.error(f"LangChain categorization failed for content {content_data.get('id', 'unknown')}: {str(e)}", 
-                        extra={'item_id': content_data.get('id', 'unknown'), 'stage': PipelineStages.CATEGORIZE.value, 
-                               'error_type': 'langchain_error', 'scrape_length': len(scrape)})
+            logger.error(f"LangChain categorization failed: {str(e)}", 
+                        extra={'stage': PipelineStages.CATEGORIZE.value, 
+                               'error_type': 'langchain_error', 'content_length': len(categorization_input.content)})
             # Let exception bubble up to flow processor
             raise
     
@@ -153,14 +168,9 @@ Return structured JSON with categories containing entities and their supporting 
             }
         )
         
-        categories_count = len(categorization_result.data.categorize)
-        entities_count = sum(len(cat.entities) for cat in categorization_result.data.categorize)
+        entities_count = len(categorization_result.data.entities)
+        mentions_count = sum(len(entity.mentions) for entity in categorization_result.data.entities)
         
-        logger.debug(f"Successfully categorized content: {categories_count} categories, {entities_count} entities")
+        logger.debug(f"Successfully categorized content: {entities_count} entities, {mentions_count} mentions")
         
         return categorization_result.model_dump()
-    
-
-
-
-

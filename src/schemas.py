@@ -5,7 +5,7 @@ This module defines the core data structures used throughout the DiscourseKG pla
 for categorizing political communications, extracting entities, and analyzing sentiment.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 from typing import Optional, List, Dict, Any
 
@@ -14,16 +14,16 @@ from typing import Optional, List, Dict, Any
 # ENUMS - Core Classification Types
 # ============================================================================
 
-class PolicyDomain(str, Enum):
-    """Broad policy areas for categorizing communications"""
-    ECONOMIC_POLICY = ("economic_policy", "taxes, trade, monetary policy, financial markets")
-    TECHNOLOGY_POLICY = ("technology_policy", "AI regulation, data privacy, tech competition")
-    FOREIGN_RELATIONS = ("foreign_relations", "diplomacy, international agreements, global conflicts")
-    HEALTHCARE_POLICY = ("healthcare_policy", "health insurance, medical costs, public health")
-    ENERGY_POLICY = ("energy_policy", "renewable energy, fossil fuels, climate change")
-    DEFENSE_POLICY = ("defense_policy", "military spending, national security, defense contracts")
-    SOCIAL_POLICY = ("social_policy", "education, welfare, social programs, inequality")
-    REGULATORY_POLICY = ("regulatory_policy", "government oversight, regulations, compliance")
+class TopicCategory(str, Enum):
+    """Broad topic categories for categorizing communications across any domain"""
+    ECONOMICS = ("economics", "taxes, trade, monetary policy, financial markets")
+    TECHNOLOGY = ("technology", "AI, data privacy, tech competition, innovation")
+    FOREIGN_AFFAIRS = ("foreign_affairs", "diplomacy, international agreements, global conflicts")
+    HEALTHCARE = ("healthcare", "health insurance, medical costs, public health")
+    ENERGY = ("energy", "renewable energy, fossil fuels, climate change")
+    DEFENSE = ("defense", "military spending, national security, defense")
+    SOCIAL = ("social", "education, welfare, social programs, inequality")
+    REGULATION = ("regulation", "oversight, regulations, compliance, standards")
     
     def __new__(cls, value, description):
         obj = str.__new__(cls, value)
@@ -33,11 +33,13 @@ class PolicyDomain(str, Enum):
 
 
 class EntityType(str, Enum):
-    """What type of entity is mentioned"""
-    COMPANY = ("company", "public/private companies")
-    COUNTRY = ("country", "nations that create geopolitical risk")
-    PERSON = ("person", "influential individuals")
-    POLICY_TOOL = ("policy_tool", "mechanisms like tariffs, sanctions")
+    """Type of entity mentioned in communications"""
+    ORGANIZATION = ("organization", "companies, institutions, government bodies")
+    LOCATION = ("location", "countries, regions, cities")
+    PERSON = ("person", "individuals, public figures")
+    PROGRAM = ("program", "initiatives, policies, projects, mechanisms")
+    PRODUCT = ("product", "products, services, tools, platforms")
+    EVENT = ("event", "conferences, summits, incidents, launches")
     OTHER = ("other", "anything else")
     
     def __new__(cls, value, description):
@@ -65,52 +67,79 @@ class SentimentLevel(str, Enum):
 # PYDANTIC MODELS - Core Data Structures
 # ============================================================================
 
-class EntityMention(BaseModel):
-    """Single entity mentioned in communication"""
+class TopicMention(BaseModel):
+    """Single mention of an entity within a specific topic"""
     
-    entity_name: str = Field(
-        ..., 
-        min_length=1, 
-        max_length=200,
-        description="Canonical/standard name for this entity (e.g., 'Apple', 'China', 'Joe Biden')"
-    )
+    topic: TopicCategory = Field(..., description="Topic category where entity was discussed")
     
-    entity_type: EntityType = Field(..., description="Type of entity")
-    
-    sentiment: SentimentLevel = Field(..., description="Speaker's feeling toward entity")
+    sentiment: SentimentLevel = Field(..., description="Speaker's feeling toward entity in this context")
     
     context: str = Field(
         ..., 
         min_length=10, 
         max_length=500,
-        description="Summary of how this entity was discussed"
+        description="Summary of how this entity was discussed in this topic"
     )
     
     quotes: List[str] = Field(
         default_factory=list,
-        description="Direct quotes from the original text mentioning this entity (1-3 most relevant excerpts)"
+        description="Direct quotes from the original text (1-3 most relevant excerpts)"
     )
 
 
-class CategoryWithEntities(BaseModel):
-    """A category containing entities"""
-    category: str = Field(description="Policy domain category")
-    entities: List[EntityMention] = Field(description="List of entities in this category")
+class EntityMention(BaseModel):
+    """Entity with all its topic mentions"""
+    
+    entity_name: str = Field(
+        ..., 
+        min_length=1, 
+        max_length=200,
+        description="Canonical name for this entity (e.g., 'Apple', 'China', 'Joe Biden')"
+    )
+    
+    entity_type: EntityType = Field(..., description="Type of entity")
+    
+    mentions: List[TopicMention] = Field(
+        ...,
+        min_items=1,
+        description="List of mentions, one per unique topic where entity was discussed"
+    )
+    
+    @field_validator('mentions')
+    @classmethod
+    def validate_unique_topics(cls, mentions: List[TopicMention]) -> List[TopicMention]:
+        """Ensure each topic appears only once per entity"""
+        topics = [m.topic for m in mentions]
+        if len(topics) != len(set(topics)):
+            duplicates = [topic for topic in topics if topics.count(topic) > 1]
+            raise ValueError(f"Duplicate topics found: {set(duplicates)}. Each entity must have ONE mention per unique topic.")
+        return mentions
+
+
+class CategorizationInput(BaseModel):
+    """Input fields for categorization with descriptions."""
+    title: str = Field(..., description="Title of the scraped content")
+    content_date: str = Field(..., description="Date when the content was created/published")
+    content: str = Field(..., description="The summarized content to analyze")
 
 
 class CategorizationOutput(BaseModel):
     """Output schema for the entire categorization"""
-    categorize: List[CategoryWithEntities] = Field(description="List of categories with entities")
+    entities: List[EntityMention] = Field(description="List of entities with their topic mentions")
+    
+    @field_validator('entities')
+    @classmethod
+    def validate_unique_entity_names(cls, entities: List[EntityMention]) -> List[EntityMention]:
+        """Ensure each entity name appears only once (case-insensitive)"""
+        entity_names = [e.entity_name.lower() for e in entities]
+        if len(entity_names) != len(set(entity_names)):
+            duplicates = [name for name in entity_names if entity_names.count(name) > 1]
+            raise ValueError(f"Duplicate entity names found: {set(duplicates)}. Each entity should appear only once.")
+        return entities
 
 
 class ScrapingData(BaseModel):
     """Scraped content data."""
-    title: str = Field(..., description="Title of the scraped content")
-    date: str = Field(..., description="Date of the content")
-    event_date: str = Field(..., description="Event date")
-    type: str = Field(..., description="Type of content (speech, interview, debate)")
-    source_url: str = Field(..., description="Original source URL")
-    timestamp: str = Field(..., description="Content timestamp")
     scrape: str = Field(..., description="The scraped content text")
 
 
@@ -119,6 +148,7 @@ class ScrapingResult(BaseModel):
     id: str = Field(..., description="Unique identifier for the scraped content")
     success: bool = Field(..., description="Whether scraping was successful")
     data: Optional[ScrapingData] = Field(None, description="Scraped content data")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
     error_message: Optional[str] = Field(None, description="Error message if scraping failed")
 
 
@@ -136,6 +166,7 @@ class SummarizationResult(BaseModel):
     id: str = Field(..., description="Unique identifier for the summarized content")
     success: bool = Field(..., description="Whether summarization was successful")
     data: Optional[SummarizationData] = Field(None, description="Summarized content data")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
     error_message: Optional[str] = Field(None, description="Error message if summarization failed")
 
 

@@ -36,8 +36,15 @@ class SummarizeEndpoint(BaseEndpoint):
             if not scrape or not scrape.strip():
                 raise ValueError("Empty or invalid scrape content")
             
+            # Create processing context (immutable)
+            processing_context = {
+                'id': item['id'],
+                'text': scrape,
+                'target_tokens': config.TARGET_SUMMARY_TOKENS
+            }
+            
             # Process through summarization
-            result = preprocess_content(item['id'], scrape, config.TARGET_SUMMARY_TOKENS)
+            result = preprocess_content(processing_context)
             
             self.logger.debug(f"Successfully summarized item {item['id']} - {result['data']['summary_word_count']} words")
             

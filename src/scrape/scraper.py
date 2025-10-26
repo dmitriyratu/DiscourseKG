@@ -25,34 +25,32 @@ class Scraper:
     def __init__(self):
         logger.debug("Scraper initialized")
     
-    def scrape_content(self, item: Dict[str, Any]) -> Dict[str, Any]:
-        """Scrape content from the provided item."""
-        url = item['source_url']
-        content_type = item.get('content_type', 'speech')
+    def scrape_content(self, processing_context: Dict[str, Any]) -> Dict[str, Any]:
+        """Scrape content from the provided processing context."""
+        url = processing_context['source_url']
+        content_type = processing_context.get('content_type', 'speech')
         
         logger.debug(f"Starting scraping for URL: {url}")
         
-        # Generate mock scrape content using existing item data
-        scrape_data = generate_test_transcript(item, content_type)
+        # Generate mock scrape content using processing context
+        scrape_data = generate_test_transcript(processing_context, content_type)
         
         return self._create_result(scrape_data)
     
     def _create_result(self, scrape_data: Dict[str, Any]) -> Dict[str, Any]:
         """Helper to create ScrapingResult."""
         scraping_data = ScrapingData(
-            title=scrape_data['title'],
-            date=scrape_data['date'],
-            event_date=scrape_data['event_date'],
-            type=scrape_data['type'],
-            source_url=scrape_data['source_url'],
-            timestamp=scrape_data['timestamp'],
             scrape=scrape_data['scrape']
         )
         
         result = ScrapingResult(
             id=scrape_data['id'],
             success=True,
-            data=scraping_data
+            data=scraping_data,
+            metadata={
+                'title': scrape_data.get('title'),
+                'content_date': scrape_data.get('content_date')
+            }
         )
         
         logger.debug(f"Successfully scraped: {result.id}")
