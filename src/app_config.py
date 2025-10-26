@@ -19,8 +19,8 @@ class Config:
     # OpenAI Configuration
     OPENAI_API_KEY: Optional[str] = os.getenv('OPENAI_API_KEY')
     OPENAI_MODEL: str = "gpt-4o-mini"
-    OPENAI_MAX_TOKENS: int = 2000
-    OPENAI_TEMPERATURE: float = 0.1  # Low temperature for consistent results
+    OPENAI_MAX_TOKENS: int = 5000
+    OPENAI_TEMPERATURE: float = 0.1
     
     # Data Paths - Use absolute paths from project root
     PROJECT_ROOT = here()

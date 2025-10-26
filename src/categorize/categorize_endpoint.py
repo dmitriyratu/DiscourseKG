@@ -45,7 +45,8 @@ class CategorizeEndpoint(BaseEndpoint):
             # Create processing context (immutable)
             processing_context = {
                 'id': item['id'],
-                'categorization_input': categorization_input
+                'categorization_input': categorization_input,
+                'previous_error': item.get('error_message')
             }
             
             # Process through categorization

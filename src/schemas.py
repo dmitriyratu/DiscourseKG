@@ -67,12 +67,44 @@ class SentimentLevel(str, Enum):
 # PYDANTIC MODELS - Core Data Structures
 # ============================================================================
 
+class Subject(BaseModel):
+    """Specific subject discussed within a topic mention"""
+    
+    subject_name: str = Field(
+        ..., 
+        min_length=4,
+        max_length=50,
+        description="2-3 word description of the specific subject discussed"
+    )
+    
+    sentiment: SentimentLevel = Field(..., description="Speaker's feeling toward this specific subject")
+    
+    quotes: List[str] = Field(
+        ...,
+        min_items=1,
+        description="Direct quotes about this subject (1-6 quotes recommended)"
+    )
+    
+    @field_validator('subject_name')
+    @classmethod
+    def validate_word_count(cls, v: str) -> str:
+        """Ensure subject_name is 2-3 words"""
+        word_count = len(v.split())
+        if word_count < 2 or word_count > 3:
+            raise ValueError(f"subject_name must be 2-3 words, got {word_count} words: '{v}'")
+        return v
+
+
+class SentimentAggregation(BaseModel):
+    """Aggregated sentiment statistics for a topic mention"""
+    count: int = Field(..., description="Number of subjects with this sentiment")
+    prop: float = Field(..., description="Proportion of subjects with this sentiment")
+
+
 class TopicMention(BaseModel):
     """Single mention of an entity within a specific topic"""
     
     topic: TopicCategory = Field(..., description="Topic category where entity was discussed")
-    
-    sentiment: SentimentLevel = Field(..., description="Speaker's feeling toward entity in this context")
     
     context: str = Field(
         ..., 
@@ -81,9 +113,15 @@ class TopicMention(BaseModel):
         description="Summary of how this entity was discussed in this topic"
     )
     
-    quotes: List[str] = Field(
-        default_factory=list,
-        description="Direct quotes from the original text (1-3 most relevant excerpts)"
+    subjects: List[Subject] = Field(
+        ...,
+        min_items=1,
+        description="List of specific subjects discussed about this entity in this topic"
+    )
+    
+    aggregated_sentiment: Optional[Dict[str, SentimentAggregation]] = Field(
+        default=None,
+        description="Computed aggregation of sentiment across all subjects in this mention"
     )
 
 

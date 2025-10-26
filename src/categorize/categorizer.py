@@ -7,10 +7,12 @@ from langchain_core.runnables import RunnableLambda
 from src.app_config import config
 from src.schemas import (
     TopicCategory, EntityType, SentimentLevel, 
-    EntityMention, TopicMention, CategorizationInput, CategorizationOutput, CategorizationResult
+    EntityMention, TopicMention, Subject, CategorizationInput, CategorizationOutput, CategorizationResult,
+    SentimentAggregation
 )
 from src.utils.logging_utils import get_logger
 from src.pipeline_config import PipelineStages
+from src.categorize.prompts import SYSTEM_PROMPT, USER_PROMPT
 
 logger = get_logger(__name__)
 
@@ -39,65 +41,12 @@ class Categorizer:
         
         # Create LLM with structured output
         llm = ChatOpenAI(**llm_kwargs)
-        llm_structured = llm.with_structured_output(CategorizationOutput, include_raw=False)
+        llm_structured = llm.with_structured_output(CategorizationOutput, include_raw=True)
         
-        # Create prompt template
+        # Create prompt template from separate prompt file
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an expert content analyst specializing in communications analysis across all domains.
-            
-            INPUT FIELD DESCRIPTIONS:
-            {field_descriptions}
-            
-            ENTITY TYPE OPTIONS:
-            {entity_types}
-            
-            SENTIMENT OPTIONS:
-            {sentiment_options}
-            
-            TOPIC CATEGORIES:
-            {topic_categories}
-            
-            Return a JSON object with an "entities" array. Each entity should have:
-            - entity_name: canonical name
-            - entity_type: one of the entity types above
-            - mentions: array of mention objects, ONE per unique topic
-            
-            Each mention object should have:
-            - topic: topic category (must be unique per entity)
-            - sentiment: sentiment level
-            - context: summary of discussion
-            - quotes: array of verbatim quotes
-            """),
-            ("user", """Analyze the following communication and extract structured entity mentions:
-
-TITLE: {title}
-CONTENT DATE: {content_date}
-CONTENT: {content}
-
-INSTRUCTIONS:
-1. Identify all significant entities mentioned (organizations, locations, people, programs, products, events)
-2. For each unique entity, determine its type
-3. Use canonical names for entities (e.g., "Apple Inc." → "Apple", "President Biden" → "Joe Biden")
-4. For each entity, create ONE MENTION per unique topic category where it was discussed
-5. If an entity is discussed in multiple topics, include multiple mention objects within that entity's mentions array
-6. Only classify sentiment when clearly expressed by the speaker
-
-OUTPUT STRUCTURE:
-- Group by entity (not by topic)
-- Each entity appears once with a mentions array
-- Each mention represents one topic where that entity was discussed
-- Sentiment/context/quotes are specific to each topic mention
-
-CRITICAL QUOTE EXTRACTION RULES:
-   - Quotes MUST be verbatim excerpts from the original text - copy exactly as written
-   - Do NOT paraphrase, summarize, or modify the original language
-   - Choose quotes that best show the speaker's sentiment or key context about the entity
-   - Include 1-3 most relevant quotes per mention
-   - If no direct quotes exist, use an empty quotes array []
-
-Return structured JSON with entities containing their topic mentions.
-
-CRITICAL: Each entity must have EXACTLY ONE mention per unique topic. Do not repeat topics for the same entity.""")
+            ("system", SYSTEM_PROMPT),
+            ("user", USER_PROMPT)
         ])
         
         # Create LCEL chain with automatic enum guidance injection
@@ -109,7 +58,8 @@ CRITICAL: Each entity must have EXACTLY ONE mention per unique topic. Do not rep
                 "topic_categories": RunnableLambda(lambda _: self._get_enum_guidance(TopicCategory)),
                 "title": lambda x: x["title"],
                 "content_date": lambda x: x["content_date"],
-                "content": lambda x: x["content"][:config.MAX_TRANSCRIPT_LENGTH]
+                "content": lambda x: x["content"][:config.MAX_TRANSCRIPT_LENGTH],
+                "previous_error_text": lambda x: self._format_error_text(x.get("previous_error"))
             }
             | prompt
             | llm_structured
@@ -124,6 +74,34 @@ CRITICAL: Each entity must have EXACTLY ONE mention per unique topic. Do not rep
         return "\n".join(f"  {name}: {field.description}" 
                         for name, field in CategorizationInput.model_fields.items())
     
+    def _format_error_text(self, error_message: str = None) -> str:
+        """Format previous error message for the prompt"""
+        if not error_message:
+            return ""
+        return f"\n\n*** PREVIOUS ATTEMPT FAILED WITH ERROR:\n{error_message}\n\nPlease correct this error in your response. ***\n"
+    
+    def _compute_aggregated_sentiment(self, categorization_output: CategorizationOutput) -> CategorizationOutput:
+        """Compute aggregated sentiment for each topic mention from its subjects"""
+        for entity in categorization_output.entities:
+            for mention in entity.mentions:
+                # Count sentiments
+                sentiment_counts = {}
+                for subject in mention.subjects:
+                    sentiment_value = subject.sentiment.value
+                    sentiment_counts[sentiment_value] = sentiment_counts.get(sentiment_value, 0) + 1
+                
+                # Calculate proportions and create aggregation
+                total_subjects = len(mention.subjects)
+                mention.aggregated_sentiment = {
+                    sentiment: SentimentAggregation(
+                        count=count,
+                        prop=round(count / total_subjects, 3)
+                    )
+                    for sentiment, count in sentiment_counts.items()
+                }
+        
+        return categorization_output
+    
     def categorize_content(self, processing_context: Dict[str, Any]) -> Dict[str, Any]:
         """Categorize content from processing context."""
         start_time = time.time()
@@ -131,22 +109,42 @@ CRITICAL: Each entity must have EXACTLY ONE mention per unique topic. Do not rep
         # Extract what we need from the processing context
         id = processing_context['id']
         categorization_input = processing_context['categorization_input']
+        previous_error = processing_context.get('previous_error')
         
         if not categorization_input.content:
             raise ValueError("No content found in categorization input")
         
         try:
+            if previous_error:
+                logger.info(f"Retrying categorization with previous error context for id: {id}")
             logger.debug(f"Starting categorization for content (id: {id})")
             logger.debug(f"Processing content: {len(categorization_input.content)} chars, truncated to {config.MAX_TRANSCRIPT_LENGTH}")
             
             # Invoke chain with structured output (automatic validation & retry)
-            result = self.chain.invoke({
+            response = self.chain.invoke({
                 "title": categorization_input.title,
                 "content_date": categorization_input.content_date,
-                "content": categorization_input.content
+                "content": categorization_input.content,
+                "previous_error": previous_error
             })
             
+            # Extract parsed result and token usage
+            result = response["parsed"]
+            raw_response = response["raw"]
+            
+            # Log token usage if available
+            if hasattr(raw_response, 'usage_metadata') and raw_response.usage_metadata:
+                usage = raw_response.usage_metadata
+                input_tokens = usage.get('input_tokens', 0)
+                output_tokens = usage.get('output_tokens', 0)
+                total_tokens = usage.get('total_tokens', 0)
+                
+                logger.info(f"LLM token usage for {id}: input={input_tokens}, output={output_tokens}, total={total_tokens}")
+            
             logger.debug(f"LLM response received: {len(result.entities)} entities")
+            
+            # Compute aggregated sentiment from subjects
+            result = self._compute_aggregated_sentiment(result)
             
             return self._create_result(id, result)
             

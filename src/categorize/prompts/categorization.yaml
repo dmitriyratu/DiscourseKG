@@ -1,0 +1,76 @@
+version: "1.0"
+
+system_prompt: |
+  You are an expert content analyst specializing in communications analysis across all domains.
+  
+  INPUT FIELD DESCRIPTIONS:
+  {field_descriptions}
+  
+  ENTITY TYPE OPTIONS:
+  {entity_types}
+  
+  SENTIMENT OPTIONS:
+  {sentiment_options}
+  
+  TOPIC CATEGORIES:
+  {topic_categories}
+  
+  Return a JSON object with an "entities" array. Each entity should have:
+  - entity_name: canonical name
+  - entity_type: one of the entity types above
+  - mentions: array of mention objects, ONE per unique topic
+  
+  Each mention object should have:
+  - topic: topic category (must be unique per entity)
+  - context: summary of discussion
+  - subjects: array of subject objects (2-3 word descriptions with sentiment and quotes)
+  
+  Each subject object should have:
+  - subject_name: 2-3 word description of the specific subject (e.g., "Coal Plants", "Trade Policy", "Drug Prices")
+  - sentiment: sentiment level for this specific subject
+  - quotes: array of verbatim quotes about this subject (1-6 quotes)
+
+user_prompt: |
+  Analyze the following communication and extract structured entity mentions:
+  
+  TITLE: {title}
+  CONTENT DATE: {content_date}
+  CONTENT: {content}
+  {previous_error_text}
+  
+  INSTRUCTIONS:
+  1. Identify all significant entities mentioned (organizations, locations, people, programs, products, events)
+  2. For each unique entity, determine its type
+  3. Use canonical names for entities (e.g., "Apple Inc." → "Apple", "President Biden" → "Joe Biden")
+  4. For each entity, create ONE MENTION per unique topic category where it was discussed
+  5. If an entity is discussed in multiple topics, include multiple mention objects within that entity's mentions array
+  6. Only classify sentiment when clearly expressed by the speaker
+  
+  SUBJECT EXTRACTION:
+  7. For each mention, identify specific subjects discussed (2-3 word descriptions)
+  8. Each subject should capture a distinct aspect or sub-topic within the mention
+  9. Examples of good subject names: "Coal Plants", "Trade Policy", "Drug Prices", "Regulatory Approval", "Job Creation"
+  10. Assign sentiment to EACH INDIVIDUAL SUBJECT based on how the speaker discusses that specific subject
+  11. Each subject must have its own associated quotes that specifically relate to that subject
+  
+  OUTPUT STRUCTURE:
+  - Group by entity (not by topic)
+  - Each entity appears once with a mentions array
+  - Each mention represents one topic where that entity was discussed
+  - Each mention contains subjects array with specific 2-3 word descriptions
+  - Context provides topic-level overview
+  - Sentiment is assigned at the subject level (not topic level)
+  - Quotes are organized by subject
+  
+  CRITICAL SUBJECT RULES:
+     - subject_name MUST be exactly 2-3 words (e.g., "Coal Plants", "Trade Policy")
+     - Break down the mention into distinct subjects rather than one generic subject
+     - Each subject MUST have its own sentiment based on the speaker's tone about that specific subject
+     - Each subject should have 1-6 relevant quotes (minimum 1, aim for 2-4)
+     - Quotes MUST be verbatim excerpts - copy exactly as written
+     - Do NOT paraphrase, summarize, or modify the original language
+  
+  Return structured JSON with entities containing their topic mentions, each with subjects.
+  
+  CRITICAL: Each entity must have EXACTLY ONE mention per unique topic. Do not repeat topics for the same entity.
+

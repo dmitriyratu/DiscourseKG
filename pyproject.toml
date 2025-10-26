@@ -15,6 +15,7 @@ dependencies = [
     "pyprojroot>=0.2.0",
     "tqdm>=4.64.0",
     "pandas>=1.5.0",
+    "pyyaml>=6.0.0",
 ]
 
 [project.optional-dependencies]
