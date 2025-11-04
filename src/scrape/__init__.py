@@ -1,3 +1,1 @@
-"""
-Scrape module for collecting speaker transcripts.
-"""
+"""Scraping module for collecting speaker transcripts."""

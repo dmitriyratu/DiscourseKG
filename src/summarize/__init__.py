@@ -1,1 +1,1 @@
-# Summarization module for DiscourseKG platform
+"""Summarization module for condensing content."""

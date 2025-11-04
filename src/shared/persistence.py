@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any, Optional
 import pyprojroot
 
-from src.app_config import config
+from src.config import config
 from src.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -21,8 +21,6 @@ def save_data(id: str, data: Any, data_type: str, speaker: str, content_type: st
     
     # Generate file path with speaker/content-type structure
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    # Use provided speaker and content_type
     
     # Create path: {environment}/{speaker}/{data_type}/{content_type}/
     filename = f"{id}_{timestamp}.json"

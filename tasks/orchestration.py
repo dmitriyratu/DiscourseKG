@@ -17,4 +17,3 @@ def get_items(stage: str) -> List[Dict[str, Any]]:
     manager = PipelineStateManager()
     items = manager.get_next_stage_tasks(stage)
     return [item.model_dump() for item in items]
-

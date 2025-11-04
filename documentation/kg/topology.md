@@ -17,14 +17,14 @@ The DiscourseKG graph uses a hierarchical structure with 5 node types and 4 rela
 ```mermaid
 graph TB
     subgraph "Level 1: Speaker & Communication"
-        S[Speaker<br/>___________<br/>name<br/>role<br/>industry<br/>region]
+        S[Speaker<br/>___________<br/>name<br/>display_name<br/>role<br/>organization<br/>industry<br/>region<br/>date_of_birth<br/>bio]
         C[Communication<br/>___________<br/>id<br/>title<br/>content_type<br/>content_date<br/>source_url<br/>full_text<br/>word_count<br/>was_summarized<br/>compression_ratio]
     end
     
     subgraph "Level 2: Entity & Mentions"
         E[Entity<br/>___________<br/>canonical_name<br/>entity_type]
-        M1[Mention<br/>___________<br/>topic<br/>context<br/>aggregated_sentiment]
-        M2[Mention<br/>___________<br/>topic<br/>context<br/>aggregated_sentiment]
+        M1[Mention<br/>___________<br/>topic<br/>context<br/>subjects]
+        M2[Mention<br/>___________<br/>topic<br/>context<br/>subjects]
     end
     
     subgraph "Level 3: Subjects"
@@ -61,13 +61,17 @@ graph TB
 
 **Properties**:
 - `name` (string, unique): Canonical name (e.g., "Donald Trump", "Joe Biden")
+- `display_name` (string): Full formatted name for display purposes
 - `role` (string): Position/title (e.g., "President", "CEO", "Senator")
+- `organization` (string): Affiliated organization or institution
 - `industry` (string): Domain/sector (e.g., "Politics", "Technology", "Finance")
 - `region` (string): Geographic location (e.g., "United States", "California")
+- `date_of_birth` (date): Speaker's birth date
+- `bio` (string): Biographical information about the speaker
 - `influence_score` (float, optional): Market-moving power metric (0-100)
 
 **Cardinality**: One per unique speaker
-**Example**: Speaker {name: "Donald Trump", role: "President", industry: "Politics"}
+**Example**: Speaker {name: "Donald Trump", display_name: "Donald J. Trump", role: "President", organization: "United States Government", industry: "Politics", region: "United States"}
 
 ---
 
@@ -116,12 +120,12 @@ graph TB
 - `topic` (enum): Topic category where entity was discussed
   - `economics`, `technology`, `foreign_affairs`, `healthcare`, `energy`, `defense`, `social`, `regulation`
 - `context` (string): 10-500 char summary of how entity was discussed in this topic
-- `aggregated_sentiment` (object): Computed sentiment statistics from subjects
-  - Structure: `{sentiment: {count: int, prop: float}}`
-  - Example: `{positive: {count: 3, prop: 1.0}}`
+- `subjects` (array): List of specific subjects discussed in this mention
 
 **Cardinality**: One per unique (communication, entity, topic) combination
 **Constraint**: An entity can only be mentioned once per topic per communication
+
+**Note**: `aggregated_sentiment` is computed in-memory during the graph loading stage from the `subjects` array before inserting into Neo4j
 
 ---
 

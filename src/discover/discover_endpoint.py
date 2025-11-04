@@ -39,8 +39,5 @@ class DiscoverEndpoint(BaseEndpoint):
             )
             
         except Exception as e:
-            id = discovery_params.get('id', 'unknown')
-            self.logger.error(f"Error discovering content for {discovery_params.get('speaker', 'unknown')}: {str(e)}", 
-                             extra={'speaker': discovery_params.get('speaker'), 'stage': PipelineStages.DISCOVER.value, 'error_type': 'endpoint_error'})
-            # Let exception bubble up to flow processor
+            
             raise

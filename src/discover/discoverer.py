@@ -28,62 +28,66 @@ class Discoverer:
     
     def discover_content(self, discovery_params: Dict[str, Any]) -> Dict[str, Any]:
         """Discover content sources based on the provided parameters."""
-        start_time = time.time()
-        
         speaker = discovery_params['speaker']
         start_date = discovery_params['start_date']
         end_date = discovery_params['end_date']
         
-        logger.debug(f"Starting discovery for speaker: {speaker}")
-        
-        # Mock discovery - in real implementation this would use agents to find content
-        mock_urls = [
-            f"https://example.com/test/speech_{i}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            for i in range(3)
-        ]
-        
-        manager = PipelineStateManager()
-        discovered_items = []
-        
-        # Create states for all discovered items
-        for i, url in enumerate(mock_urls):
-            # Generate unique ID for discovered item
-            id = f"discovered-item-{i}-{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            scrape_cycle = datetime.now().strftime("%Y-%m-%d_%H:00:00")
+        try:
+            start_time = time.time()
             
-            # Determine content type for variety
-            content_types = ["speech", "interview", "debate"]
-            content_type = content_types[i % len(content_types)]
+            logger.debug(f"Starting discovery for speaker: {speaker}")
             
-            # Create initial pipeline state
-            state = manager.create_state(
-                id=id,
-                scrape_cycle=scrape_cycle,
-                source_url=url,
-                speaker=speaker,
-                content_type=content_type
-            )
+            # Mock discovery - in real implementation this would use agents to find content
+            mock_urls = [
+                f"https://example.com/test/speech_{i}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                for i in range(3)
+            ]
             
-            discovered_items.append({
-                'id': state.id,
-                'url': url,
-                'content_type': content_type,
-                'speaker': speaker
-            })
+            manager = PipelineStateManager()
+            discovered_items = []
             
-            logger.debug(f"Created state for discovered item: {id}")
-        
-        # Add timing information
-        processing_time = round(time.time() - start_time, 2)
-        
-        result = {
-            'discovery_id': f"discovery-{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-            'discovered_items': discovered_items,
-            'speaker': speaker,
-            'date_range': f"{start_date} to {end_date}",
-        }
-        
-        logger.debug(f"Successfully discovered {len(discovered_items)} items ({processing_time}s)")
-        
-        return result
-
+            # Create states for all discovered items
+            for i, url in enumerate(mock_urls):
+                # Generate unique ID for discovered item
+                id = f"discovered-item-{i}-{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                run_timestamp = datetime.now().strftime("%Y-%m-%d_%H:00:00")
+                
+                # Determine content type for variety
+                content_types = ["speech", "interview", "debate"]
+                content_type = content_types[i % len(content_types)]
+                
+                # Create initial pipeline state
+                state = manager.create_state(
+                    id=id,
+                    run_timestamp=run_timestamp,
+                    source_url=url,
+                    speaker=speaker,
+                    content_type=content_type
+                )
+                
+                discovered_items.append({
+                    'id': state.id,
+                    'url': url,
+                    'content_type': content_type,
+                    'speaker': speaker
+                })
+                
+                logger.debug(f"Created state for discovered item: {id}")
+            
+            # Add timing information
+            processing_time = round(time.time() - start_time, 2)
+            
+            result = {
+                'discovery_id': f"discovery-{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                'discovered_items': discovered_items,
+                'speaker': speaker,
+                'date_range': f"{start_date} to {end_date}",
+            }
+            
+            logger.debug(f"Successfully discovered {len(discovered_items)} items ({processing_time}s)")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Discovery failed for speaker {speaker}: {str(e)}")
+            raise

@@ -13,8 +13,9 @@ from sentence_transformers import SentenceTransformer, util
 from nltk.tokenize import sent_tokenize
 from typing import Optional, Dict, Any
 
-from src.schemas import SummarizationResult, SummarizationData
-from src.app_config import config
+from src.summarize.models import SummarizationResult, SummarizationData
+from src.config import config
+from src.summarize.config import summarization_config
 from src.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -40,10 +41,10 @@ class Summarizer:
     CONCLUSION_SENTENCES = 0  # No special treatment for conclusions
     
     def __init__(self):
-        self.tokenizer = tiktoken.get_encoding(config.SUMMARIZER_TOKENIZER)
-        self.model = SentenceTransformer(config.SUMMARIZER_MODEL)
+        self.tokenizer = tiktoken.get_encoding(summarization_config.SUMMARIZER_TOKENIZER)
+        self.model = SentenceTransformer(summarization_config.SUMMARIZER_MODEL)
     
-    def summarize(self, processing_context: Dict[str, Any]) -> dict:
+    def summarize_content(self, processing_context: Dict[str, Any]) -> dict:
         """Summarize text to target token count."""
         start_time = time.time()
         
@@ -115,12 +116,13 @@ class Summarizer:
         # Step 6: Accumulate sentences until target token count
         selected_sentences = []
         token_count = 0
+        max_tokens = int(target_tokens * 1.15) 
         
         for rank_index in ranked_indices:
             sentence = sentences[rank_index]
             sentence_tokens = len(self.tokenizer.encode(sentence))
             
-            if token_count + sentence_tokens <= target_tokens:
+            if token_count + sentence_tokens <= max_tokens:
                 selected_sentences.append(rank_index)
                 token_count += sentence_tokens
             else:

@@ -3,18 +3,18 @@ from typing import Dict, Any
 from src.pipeline_config import PipelineStages
 from src.shared.flow_processor import FlowProcessor
 from src.utils.logging_utils import get_logger
-from src.summarize.summarize_endpoint import SummarizeEndpoint
+from src.graph.graph_endpoint import GraphEndpoint
 from pathlib import Path
 
 logger = get_logger(__name__)
 flow_name = Path(__file__).stem
 
 
-@task(name="summarize_item", retries=2, retry_delay_seconds=10, retry_jitter_factor=0.5, timeout_seconds=120)
-def summarize_item(item: Dict[str, Any]) -> Dict[str, Any]:
-    """Task to summarize article content with error-aware retries."""
+@task(name="graph_item", retries=2, retry_delay_seconds=10, retry_jitter_factor=0.5, timeout_seconds=60)
+def graph_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    """Task to preprocess data for graph with error-aware retries."""
     try:
-        result = SummarizeEndpoint().execute(item)
+        result = GraphEndpoint().execute(item)
         return result
     except Exception as e:
         # Store error in item for next retry attempt (already logged at origin)
@@ -23,13 +23,14 @@ def summarize_item(item: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @flow
-def summarize_flow():
-    """Process items through summarization stage."""
+def graph_flow():
+    """Process items through graph preprocessing stage."""
     logger.info(f"Starting {flow_name}")
     processor = FlowProcessor(flow_name)
     processor.process_items(
-        stage=PipelineStages.SUMMARIZE.value,
-        task_func=summarize_item,
-        data_type=PipelineStages.SUMMARIZE.value
+        stage=PipelineStages.GRAPH.value,
+        task_func=graph_item,
+        data_type=PipelineStages.GRAPH.value
     )
     logger.info(f"Completed {flow_name}")
+

@@ -41,5 +41,3 @@ class DataLoader:
         """
         data = self.load(file_path)
         return data['data'].get(stage.value, '')
-
-

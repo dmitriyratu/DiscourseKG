@@ -10,16 +10,15 @@ logger = get_logger(__name__)
 flow_name = Path(__file__).stem
 
 
-@task(name="discover_content", retries=2, retry_delay_seconds=30, retry_jitter_factor=0.5)
+@task(name="discover_content", retries=2, retry_delay_seconds=10, retry_jitter_factor=0.5, timeout_seconds=120)
 def discover_content(discovery_params: Dict[str, Any]) -> Dict[str, Any]:
     """Task to discover content sources with error-aware retries."""
     try:
         result = DiscoverEndpoint().execute(discovery_params)
         return result
     except Exception as e:
-        error_msg = str(e)
-        logger.error(f"{flow_name} failed for speaker {discovery_params.get('speaker', 'unknown')}: {error_msg}")
-        discovery_params['error_message'] = error_msg
+        # Store error in params for next retry attempt (already logged at origin)
+        discovery_params['error_message'] = str(e)
         raise
 
 

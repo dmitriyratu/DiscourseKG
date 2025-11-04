@@ -1,14 +1,15 @@
-from typing import Dict, List, Any
-import time
+from typing import Dict, Any, Optional
+import json
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableLambda
+from pydantic import ValidationError
 
-from src.app_config import config
-from src.schemas import (
+from src.categorize.config import categorization_config
+from src.categorize.models import (
     TopicCategory, EntityType, SentimentLevel, 
-    EntityMention, TopicMention, Subject, CategorizationInput, CategorizationOutput, CategorizationResult,
-    SentimentAggregation
+    EntityMention, TopicMention, Subject, CategorizationInput, CategorizationOutput,
+    CategorizationResult
 )
 from src.utils.logging_utils import get_logger
 from src.pipeline_config import PipelineStages
@@ -29,14 +30,16 @@ class Categorizer:
     def __init__(self):
         
         llm_kwargs = {
-            "model": config.OPENAI_MODEL,
-            "temperature": config.OPENAI_TEMPERATURE,
-            "max_tokens": config.OPENAI_MAX_TOKENS,
-            "api_key": config.OPENAI_API_KEY
+            "model": categorization_config.OPENAI_MODEL,
+            "temperature": categorization_config.OPENAI_TEMPERATURE,
+            "max_tokens": categorization_config.OPENAI_MAX_OUTPUT_TOKENS,
+            "api_key": categorization_config.OPENAI_API_KEY,
+            "timeout": categorization_config.OPENAI_TIMEOUT,
+            "max_retries": categorization_config.OPENAI_MAX_RETRIES,
         }
         
-        logger.debug(f"Categorizer initialized with model: {config.OPENAI_MODEL}")
-        logger.debug(f"Using temperature: {config.OPENAI_TEMPERATURE}, max_tokens: {config.OPENAI_MAX_TOKENS}")
+        logger.debug(f"Categorizer initialized with model: {categorization_config.OPENAI_MODEL}")
+        logger.debug(f"Using temperature: {categorization_config.OPENAI_TEMPERATURE}, max_output_tokens: {categorization_config.OPENAI_MAX_OUTPUT_TOKENS}")
         logger.debug("Using structured output with automatic Pydantic validation")
         
         # Create LLM with structured output
@@ -56,10 +59,14 @@ class Categorizer:
                 "entity_types": RunnableLambda(lambda _: self._get_enum_guidance(EntityType)),
                 "sentiment_options": RunnableLambda(lambda _: self._get_enum_guidance(SentimentLevel)),
                 "topic_categories": RunnableLambda(lambda _: self._get_enum_guidance(TopicCategory)),
+                "output_budget_tokens": lambda _: categorization_config.OPENAI_MAX_OUTPUT_TOKENS,
                 "title": lambda x: x["title"],
                 "content_date": lambda x: x["content_date"],
-                "content": lambda x: x["content"][:config.MAX_TRANSCRIPT_LENGTH],
-                "previous_error_text": lambda x: self._format_error_text(x.get("previous_error"))
+                "content": lambda x: x["content"],
+                "previous_error_text": lambda x: self._format_error_text(
+                    x.get("previous_error"), 
+                    x.get("previous_failed_output")
+                )
             }
             | prompt
             | llm_structured
@@ -74,100 +81,115 @@ class Categorizer:
         return "\n".join(f"  {name}: {field.description}" 
                         for name, field in CategorizationInput.model_fields.items())
     
-    def _format_error_text(self, error_message: str = None) -> str:
-        """Format previous error message for the prompt"""
+    def _format_error_text(self, error_message: str = None, failed_output: Any = None) -> str:
+        """Format previous error message and failed output for the prompt"""
         if not error_message:
             return ""
-        return f"\n\n*** PREVIOUS ATTEMPT FAILED WITH ERROR:\n{error_message}\n\nPlease correct this error in your response. ***\n"
-    
-    def _compute_aggregated_sentiment(self, categorization_output: CategorizationOutput) -> CategorizationOutput:
-        """Compute aggregated sentiment for each topic mention from its subjects"""
-        for entity in categorization_output.entities:
-            for mention in entity.mentions:
-                # Count sentiments
-                sentiment_counts = {}
-                for subject in mention.subjects:
-                    sentiment_value = subject.sentiment.value
-                    sentiment_counts[sentiment_value] = sentiment_counts.get(sentiment_value, 0) + 1
-                
-                # Calculate proportions and create aggregation
-                total_subjects = len(mention.subjects)
-                mention.aggregated_sentiment = {
-                    sentiment: SentimentAggregation(
-                        count=count,
-                        prop=round(count / total_subjects, 3)
-                    )
-                    for sentiment, count in sentiment_counts.items()
-                }
         
-        return categorization_output
+        error_context = "\n\n*** PREVIOUS ATTEMPT FAILED ***\n\n"
+        
+        # Include the failed output if available
+        if failed_output:
+            try:
+                # Pretty print the failed JSON output
+                if isinstance(failed_output, str):
+                    formatted_output = failed_output
+                else:
+                    formatted_output = json.dumps(failed_output, indent=2)
+                
+                output_length = len(formatted_output)
+                error_context += f"Your previous output:\n{formatted_output}\n\n"
+            except Exception as e:
+                # If formatting fails, skip showing the output
+                logger.warning(f"Failed to format failed_output: {e}")
+                pass
+        
+        error_context += f"Validation error:\n{error_message}\n\n"
+        error_context += "Fix the validation errors and try again. Keep all correct parts and only fix what's wrong.\n"
+        
+        return error_context
     
     def categorize_content(self, processing_context: Dict[str, Any]) -> Dict[str, Any]:
         """Categorize content from processing context."""
-        start_time = time.time()
         
         # Extract what we need from the processing context
         id = processing_context['id']
         categorization_input = processing_context['categorization_input']
         previous_error = processing_context.get('previous_error')
+        previous_failed_output = processing_context.get('previous_failed_output')
         
         if not categorization_input.content:
             raise ValueError("No content found in categorization input")
         
+        response = None  # Initialize for exception handling
         try:
             if previous_error:
-                logger.info(f"Retrying categorization with previous error context for id: {id}")
+                logger.info(f"Retrying categorization for {id}: has_failed_output={bool(previous_failed_output)}")
             logger.debug(f"Starting categorization for content (id: {id})")
-            logger.debug(f"Processing content: {len(categorization_input.content)} chars, truncated to {config.MAX_TRANSCRIPT_LENGTH}")
+            logger.debug(f"Processing content: {len(categorization_input.content)} chars")
             
             # Invoke chain with structured output (automatic validation & retry)
             response = self.chain.invoke({
                 "title": categorization_input.title,
                 "content_date": categorization_input.content_date,
                 "content": categorization_input.content,
-                "previous_error": previous_error
+                "previous_error": previous_error,
+                "previous_failed_output": previous_failed_output
             })
             
             # Extract parsed result and token usage
             result = response["parsed"]
             raw_response = response["raw"]
             
-            # Log token usage if available
-            if hasattr(raw_response, 'usage_metadata') and raw_response.usage_metadata:
-                usage = raw_response.usage_metadata
-                input_tokens = usage.get('input_tokens', 0)
-                output_tokens = usage.get('output_tokens', 0)
-                total_tokens = usage.get('total_tokens', 0)
-                
-                logger.info(f"LLM token usage for {id}: input={input_tokens}, output={output_tokens}, total={total_tokens}")
+            # Extract token usage
+            token_usage = {}
+            if usage := getattr(raw_response, 'usage_metadata', None):
+                token_usage = {k: usage.get(k, 0) for k in ['input_tokens', 'output_tokens']}
+                logger.info(f"LLM token usage for {id}: {token_usage}")
             
             logger.debug(f"LLM response received: {len(result.entities)} entities")
             
-            # Compute aggregated sentiment from subjects
-            result = self._compute_aggregated_sentiment(result)
+            return self._create_result(id, result, token_usage)
             
-            return self._create_result(id, result)
+        except ValidationError as e:
+            # Attach failed output to exception for retry context
+            if response and response.get('raw'):
+                e.failed_output = response['raw'].content
+                failed_output_length = len(str(e.failed_output)) if e.failed_output else 0
+                logger.info(f"Captured failed output for {id} ({failed_output_length} chars) - will be available on retry")
+            else:
+                e.failed_output = None
+                logger.warning(f"No raw output available to capture for {id}")
+            
+            logger.error(f"Validation error for {id}: {str(e)}", 
+                        extra={'stage': PipelineStages.CATEGORIZE.value, 
+                               'error_type': 'validation_error', 
+                               'content_length': len(categorization_input.content)})
+            raise
             
         except Exception as e:
             logger.error(f"LangChain categorization failed: {str(e)}", 
                         extra={'stage': PipelineStages.CATEGORIZE.value, 
-                               'error_type': 'langchain_error', 'content_length': len(categorization_input.content)})
-            # Let exception bubble up to flow processor
+                               'error_type': 'langchain_error', 
+                               'content_length': len(categorization_input.content)})
             raise
     
-    def _create_result(self, id: str, categorization_data: CategorizationOutput) -> Dict[str, Any]:
+    def _create_result(self, id: str, categorization_data: CategorizationOutput, token_usage: Dict[str, int] = {}) -> Dict[str, Any]:
         """Helper to create CategorizationResult."""
+        metadata = {
+            'model_used': categorization_config.OPENAI_MODEL, 
+            **token_usage
+            }
+        
         categorization_result = CategorizationResult(
             id=id,
             success=True,
             data=categorization_data,
-            metadata={
-                'model_used': config.OPENAI_MODEL
-            }
+            metadata=metadata
         )
         
-        entities_count = len(categorization_result.data.entities)
-        mentions_count = sum(len(entity.mentions) for entity in categorization_result.data.entities)
+        entities_count = len(categorization_data.entities)
+        mentions_count = sum(len(entity.mentions) for entity in categorization_data.entities)
         
         logger.debug(f"Successfully categorized content: {entities_count} entities, {mentions_count} mentions")
         

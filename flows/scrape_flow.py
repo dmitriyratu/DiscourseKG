@@ -10,16 +10,15 @@ logger = get_logger(__name__)
 flow_name = Path(__file__).stem
 
 
-@task(name="scrape_item", retries=2, retry_delay_seconds=30, retry_jitter_factor=0.5)
+@task(name="scrape_item", retries=2, retry_delay_seconds=10, retry_jitter_factor=0.5, timeout_seconds=120)
 def scrape_item(item: Dict[str, Any]) -> Dict[str, Any]:
     """Task to scrape article content with error-aware retries."""
     try:
         result = ScrapeEndpoint().execute(item)
         return result
     except Exception as e:
-        error_msg = str(e)
-        logger.error(f"{flow_name} failed for item {item.get('id', 'unknown')}: {error_msg}")
-        item['error_message'] = error_msg
+        # Store error in item for next retry attempt (already logged at origin)
+        item['error_message'] = str(e)
         raise
 
 

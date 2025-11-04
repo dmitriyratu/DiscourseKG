@@ -17,14 +17,12 @@ class ScrapeEndpoint(BaseEndpoint):
     def execute(self, item: Dict[str, Any]) -> Dict[str, Any]:
         """Execute the scraping process for a single item."""
         try:
-            url = item['source_url']
-            self.logger.info(f"Processing scrape request for URL: {url}")
             
             # Create processing context (immutable)
             processing_context = {
                 'id': item['id'],
                 'source_url': item['source_url'],
-                'content_type': item.get('content_type', 'speech'),
+                'content_type': item.get('content_type'),
                 'metadata': {
                     'title': item.get('title'),
                     'content_date': item.get('content_date'),
@@ -36,11 +34,9 @@ class ScrapeEndpoint(BaseEndpoint):
             result = scrape_content(processing_context)
             
             # Calculate word count
-            scrape = result.get('scrape', '')
+            scrape = result.get('data', {}).get(PipelineStages.SCRAPE.value, '')
             word_count = len(scrape.split()) if scrape else 0
             result['word_count'] = word_count
-            
-            self.logger.debug(f"Successfully scraped: {url} -> {result.get('id')} ({word_count} words)")
             
             return self._create_success_response(
                 id=result.get('id'),
@@ -49,6 +45,5 @@ class ScrapeEndpoint(BaseEndpoint):
             )
             
         except Exception as e:
-            self.logger.error(f"Error scraping {item.get('source_url', 'unknown')}: {str(e)}")
-            # Let exception bubble up to flow processor
+            
             raise

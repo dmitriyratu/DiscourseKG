@@ -3,6 +3,7 @@ name = "discourse-kg"
 version = "0.1.0"
 dependencies = [
     "python-dotenv>=1.0.0",
+    "neo4j>=5.17.0",
     "numpy>=1.24.0",
     "sentence-transformers>=2.2.0",
     "nltk>=3.8.0",

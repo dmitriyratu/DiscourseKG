@@ -30,4 +30,4 @@ class BaseEndpoint(ABC):
             'output': result,  # Changed from 'result' to 'output' to avoid confusion with Prefect's .result()
             'input_data': input_data
         }
-    
+

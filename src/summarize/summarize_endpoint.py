@@ -6,8 +6,9 @@ from typing import Dict, Any
 
 from src.shared.base_endpoint import BaseEndpoint
 from src.shared.data_loaders import DataLoader
-from src.summarize.pipeline import preprocess_content
-from src.app_config import config
+from src.summarize.pipeline import summarize_content
+from src.config import config
+from src.summarize.config import summarization_config
 from src.pipeline_config import PipelineStages
 
 
@@ -20,9 +21,6 @@ class SummarizeEndpoint(BaseEndpoint):
     def execute(self, item: Dict[str, Any]) -> Dict[str, Any]:
         """Execute the summarization process for a single item."""
         try:
-            self.logger.info(f"Processing summarization request for item: {item['id']}")
-            self.logger.debug(f"Summarizing item: {item['id']}")
-            
             # Load raw data
             data_loader = DataLoader()
             # Get file path for the latest completed stage (should be scrape)
@@ -40,11 +38,11 @@ class SummarizeEndpoint(BaseEndpoint):
             processing_context = {
                 'id': item['id'],
                 'text': scrape,
-                'target_tokens': config.TARGET_SUMMARY_TOKENS
+                'target_tokens': summarization_config.TARGET_SUMMARY_TOKENS
             }
             
             # Process through summarization
-            result = preprocess_content(processing_context)
+            result = summarize_content(processing_context)
             
             self.logger.debug(f"Successfully summarized item {item['id']} - {result['data']['summary_word_count']} words")
             
@@ -55,7 +53,5 @@ class SummarizeEndpoint(BaseEndpoint):
             )
             
         except Exception as e:
-            self.logger.error(f"Summarization failed for item {item['id']}: {str(e)}", 
-                             extra={'item_id': item['id'], 'stage': PipelineStages.SUMMARIZE.value, 'error_type': 'endpoint_error'})
-            # Let exception bubble up to flow processor
+            
             raise

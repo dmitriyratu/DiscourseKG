@@ -23,6 +23,7 @@ class PipelineStages(str, Enum):
     SCRAPE = "scrape"
     SUMMARIZE = "summarize"
     CATEGORIZE = "categorize"
+    GRAPH = "graph"
 
 
 class PipelineConfig:
@@ -32,8 +33,9 @@ class PipelineConfig:
     STAGE_FLOW = {
         PipelineStages.DISCOVER: PipelineStages.SCRAPE,
         PipelineStages.SCRAPE: PipelineStages.SUMMARIZE,
-        PipelineStages.SUMMARIZE: PipelineStages.CATEGORIZE, 
-        PipelineStages.CATEGORIZE: None  # Pipeline complete
+        PipelineStages.SUMMARIZE: PipelineStages.CATEGORIZE,
+        PipelineStages.CATEGORIZE: PipelineStages.GRAPH,
+        PipelineStages.GRAPH: None  # Pipeline complete
     }
     
     @classmethod

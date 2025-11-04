@@ -86,6 +86,13 @@ class FlowProcessor:
             self.logger.error(f"Error processing item {id} in {stage}: {str(e)}", 
                              extra={'item_id': id, 'stage': stage, 'error_type': 'component_error', 'item_url': item.get('source_url')})
             
+            # Try to extract failed output if available (for validation errors)
+            failed_output = None
+            if hasattr(e, 'failed_output'):
+                failed_output = e.failed_output
+                if failed_output:
+                    self.logger.debug(f"Extracted failed output from exception for {id} - storing in pipeline state")
+            
             # Create error result for pipeline state (consistent with endpoint structure)
             error_result = {
                 'success': True,
@@ -95,7 +102,8 @@ class FlowProcessor:
                     'id': id,
                     'success': False,
                     'data': None,
-                    'error_message': str(e)
+                    'error_message': str(e),
+                    'failed_output': failed_output
                 },
                 'processing_time_seconds': round(time.time() - start_time, 2) if 'start_time' in locals() else 0.01
             }

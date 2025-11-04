@@ -11,7 +11,7 @@ from typing import Optional, List, Dict
 from datetime import datetime
 from pydantic import BaseModel, Field
 
-from src.app_config import config
+from src.config import config
 from src.utils.logging_utils import get_logger
 from src.pipeline_config import pipeline_config, PipelineStages, PipelineStageStatus
 
@@ -23,7 +23,7 @@ class PipelineState(BaseModel):
     
     # Core identifiers
     id: str = Field(..., description="Unique ID from raw data (matches the 'id' field in raw JSON files)")
-    scrape_cycle: str = Field(..., description="Hourly timestamp when scraped (YYYY-MM-DD_HH:00:00)")
+    run_timestamp: str = Field(..., description="Hourly timestamp when scraped (YYYY-MM-DD_HH:00:00)")
     file_paths: Dict[str, str] = Field(default_factory=dict, description="File paths for each completed stage (stage_name -> file_path)")
     
     # Content metadata
@@ -41,6 +41,7 @@ class PipelineState(BaseModel):
     created_at: str = Field(..., description="ISO timestamp when record was created")
     updated_at: str = Field(..., description="ISO timestamp of last update")
     error_message: Optional[str] = Field(None, description="Error message if current stage failed")
+    failed_output: Optional[str] = Field(None, description="Failed output from previous attempt (for retry context)")
     
     # Processing metrics
     processing_time_seconds: Optional[float] = Field(None, description="Total processing time across all stages")
@@ -64,7 +65,7 @@ class PipelineStateManager:
         self.state_file_path = Path(state_file_path or config.PIPELINE_STATE_FILE)
         self.state_file_path.parent.mkdir(parents=True, exist_ok=True)
     
-    def create_state(self, id: str, scrape_cycle: str, file_path: str = None, 
+    def create_state(self, id: str, run_timestamp: str, file_path: str = None, 
                     source_url: str = None, speaker: str = None, content_type: str = None) -> PipelineState:
         """Create a new pipeline state for a data point"""
         now = datetime.now().isoformat()
@@ -76,7 +77,7 @@ class PipelineStateManager:
         
         state = PipelineState(
             id=id,
-            scrape_cycle=scrape_cycle,
+            run_timestamp=run_timestamp,
             file_paths=file_paths,
             source_url=source_url,
             speaker=speaker,
@@ -127,10 +128,13 @@ class PipelineStateManager:
                 state_dict["updated_at"] = datetime.now().isoformat()
                 
                 processing_time = None
+                error_message = None
+                failed_output = None
                 if result_data:
                     processing_time = result_data.get('processing_time_seconds')
                     output = result_data.get('output', {})
                     error_message = output.get('error_message')
+                    failed_output = output.get('failed_output')
                 
                 if processing_time:
                     if state_dict["processing_time_seconds"]:
@@ -150,9 +154,11 @@ class PipelineStateManager:
                     state_dict["latest_completed_stage"] = stage
                     state_dict["next_stage"] = pipeline_config.get_next_stage(stage)
                     state_dict["error_message"] = None  # Clear any previous errors
+                    state_dict["failed_output"] = None  # Clear any previous failed output
                 elif status == PipelineStageStatus.FAILED:
                     # Stage failed - don't update latest_completed_stage, keep next_stage the same for retry
                     state_dict["error_message"] = error_message
+                    state_dict["failed_output"] = failed_output
                     # next_stage stays the same (retry the failed stage)
                 
                 updated = True
@@ -242,5 +248,4 @@ class PipelineStateManager:
         with open(self.state_file_path, "w", encoding="utf-8") as f:
             for state_dict in states:
                 f.write(json.dumps(state_dict) + "\n")
-    
-    
+

@@ -8,7 +8,7 @@ import inspect
 from pathlib import Path
 import pyprojroot
 from tqdm.contrib.logging import logging_redirect_tqdm
-from src.app_config import config
+from src.config import config
 
 
 def get_logger(name: str = None, level: logging = None):
