@@ -17,7 +17,6 @@ def graph_item(item: Dict[str, Any]) -> Dict[str, Any]:
         result = GraphEndpoint().execute(item)
         return result
     except Exception as e:
-        # Store error in item for next retry attempt (already logged at origin)
         item['error_message'] = str(e)
         raise
 

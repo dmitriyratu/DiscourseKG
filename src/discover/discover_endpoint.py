@@ -33,7 +33,6 @@ class DiscoverEndpoint(BaseEndpoint):
             self.logger.debug(f"Successfully discovered {len(result.get('discovered_items', []))} items")
             
             return self._create_success_response(
-                id=result.get('discovery_id'),
                 result=result,
                 stage=PipelineStages.DISCOVER.value
             )

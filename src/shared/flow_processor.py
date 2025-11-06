@@ -53,9 +53,12 @@ class FlowProcessor:
             speaker = item.get('speaker')
             content_type = item.get('content_type', 'unknown')
             
+            # Extract id from output
+            id = result_data['output']['id']
+            
             # Save the result
             output_file = save_data(
-                result_data['id'], 
+                id, 
                 result_data['output'],
                 data_type, 
                 speaker=speaker,
@@ -64,7 +67,7 @@ class FlowProcessor:
             
             # Update pipeline state
             manager.update_stage_status(
-                result_data['id'], 
+                id, 
                 stage, 
                 PipelineStageStatus.COMPLETED,
                 result_data=result_data,
@@ -75,16 +78,16 @@ class FlowProcessor:
             output_obj = result_data.get('output', {})
             if metadata := output_obj.get('metadata'):
                 manager._update_metadata_naturally(
-                    result_data['id'],
+                    id,
                     **metadata
                 )
             
-            self.logger.debug(f"Successfully completed {stage} for item {result_data['id']} -> {output_file}")
+            self.logger.debug(f"Successfully completed {stage} for item {id} -> {output_file}")
                 
         except Exception as e:
             id = item.get('id', 'unknown')
             self.logger.error(f"Error processing item {id} in {stage}: {str(e)}", 
-                             extra={'item_id': id, 'stage': stage, 'error_type': 'component_error', 'item_url': item.get('source_url')})
+                             extra={'id': id, 'stage': stage, 'error_type': 'component_error', 'item_url': item.get('source_url')})
             
             # Try to extract failed output if available (for validation errors)
             failed_output = None
@@ -96,7 +99,6 @@ class FlowProcessor:
             # Create error result for pipeline state (consistent with endpoint structure)
             error_result = {
                 'success': True,
-                'id': id,
                 'stage': stage,
                 'output': {
                     'id': id,

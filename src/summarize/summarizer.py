@@ -68,26 +68,7 @@ class Summarizer:
             logger.error(f"Summarization failed for content {id}: {str(e)}")
             # Let exception bubble up to flow processor
             raise
-    
-    def _create_result(self, id: str, original: str, summary: str, compression: float, 
-                      target_tokens: int) -> dict:
-        """Helper to create SummarizationResult."""
-        summarization_data = SummarizationData(
-            summarize=summary,
-            original_word_count=len(original.split()),
-            summary_word_count=len(summary.split()),
-            compression_ratio=compression,
-            target_word_count=target_tokens
-        )
-        
-        result = SummarizationResult(
-            id=id,
-            success=True,
-            data=summarization_data,
-            metadata={}
-        )
-        
-        return result.model_dump()
+
     
     def _do_summarization(self, text: str, target_tokens: int) -> str:
         """Internal method that performs the actual summarization logic."""
@@ -183,3 +164,23 @@ class Summarizer:
         
         final_scores = 0.7 * standardized_global_scores + 0.3 * standardized_local_scores
         return final_scores
+    
+    def _create_result(self, id: str, original: str, summary: str, compression: float, 
+                      target_tokens: int) -> dict:
+        """Helper to create SummarizationResult."""
+        summarization_data = SummarizationData(
+            summarize=summary,
+            original_word_count=len(original.split()),
+            summary_word_count=len(summary.split()),
+            compression_ratio=compression,
+            target_word_count=target_tokens
+        )
+        
+        result = SummarizationResult(
+            id=id,
+            success=True,
+            data=summarization_data,
+            metadata={}
+        )
+        
+        return result.model_dump()

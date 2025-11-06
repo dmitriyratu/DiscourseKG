@@ -47,7 +47,6 @@ class SummarizeEndpoint(BaseEndpoint):
             self.logger.debug(f"Successfully summarized item {item['id']} - {result['data']['summary_word_count']} words")
             
             return self._create_success_response(
-                id=item['id'],
                 result=result,
                 stage=PipelineStages.SUMMARIZE.value
             )

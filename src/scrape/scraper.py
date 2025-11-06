@@ -53,10 +53,7 @@ class Scraper:
             id=scrape_data['id'],
             success=True,
             data=scraping_data,
-            metadata={
-                'title': scrape_data.get('title'),
-                'content_date': scrape_data.get('content_date')
-            }
+            metadata={}
         )
         
         logger.debug(f"Successfully scraped: {result.id}")

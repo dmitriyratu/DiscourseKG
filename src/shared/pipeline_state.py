@@ -34,7 +34,7 @@ class PipelineState(BaseModel):
     source_url: Optional[str] = Field(None, description="Original source URL")
     
     # Simple stage tracking
-    latest_completed_stage: Optional[str] = Field(None, description="Latest successfully completed stage (None, 'raw', 'summarize', 'categorize')")
+    latest_completed_stage: Optional[str] = Field(None, description="Latest successfully completed stage")
     next_stage: Optional[str] = Field(..., description="Next stage that needs to be processed")
     
     # Metadata

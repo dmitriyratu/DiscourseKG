@@ -35,9 +35,6 @@ class DataLoader:
             raise ValueError(f"Invalid JSON in {path}: {e}")
     
     def extract_stage_output(self, file_path: str, stage: PipelineStages) -> Any:
-        """Extract the output field from a specific stage's file.
-        
-        Convention: The field name matches the stage name (e.g., 'scrape', 'summarize', 'categorize').
-        """
+        """Extract the output field from a specific stage's file."""
         data = self.load(file_path)
         return data['data'].get(stage.value, '')

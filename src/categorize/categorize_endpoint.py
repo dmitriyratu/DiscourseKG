@@ -52,7 +52,6 @@ class CategorizeEndpoint(BaseEndpoint):
             result = categorize_content(processing_context)
             
             return self._create_success_response(
-                id=item['id'],
                 result=result,
                 stage=PipelineStages.CATEGORIZE.value
             )

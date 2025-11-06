@@ -39,7 +39,6 @@ class ScrapeEndpoint(BaseEndpoint):
             result['word_count'] = word_count
             
             return self._create_success_response(
-                id=result.get('id'),
                 result=result,
                 stage=PipelineStages.SCRAPE.value
             )

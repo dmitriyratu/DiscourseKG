@@ -9,7 +9,6 @@ from typing import Dict, Any, List
 from neo4j import GraphDatabase
 from src.graph.config import graph_config
 from src.graph.preprocessor import GraphPreprocessor
-from src.graph.models import Neo4jLoadResult
 from src.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -263,15 +262,8 @@ class Neo4jLoader:
             'relationships_created': 1
         }
     
-    def _create_result(self, id: str, stats: Dict[str, int]) -> Dict[str, Any]:
-        """Helper to create Neo4jLoadResult."""
-        result = Neo4jLoadResult(
-            id=id,
-            success=True,
-            nodes_created=stats['nodes_created'],
-            relationships_created=stats['relationships_created']
-        )
-        
+    def _create_result(self, id: str, stats: Dict[str, int]) -> Dict[str, int]:
+        """Return Neo4j loading statistics."""
         logger.debug(f"Successfully loaded {id}: {stats['nodes_created']} nodes, {stats['relationships_created']} relationships")
-        return result.model_dump()
+        return stats
 

@@ -21,13 +21,12 @@ class BaseEndpoint(ABC):
         """Execute the endpoint processing for a single item."""
         pass
     
-    def _create_success_response(self, id: str, result: Any, stage: str, input_data: Any = None) -> Dict[str, Any]:
+    def _create_success_response(self, result: Any, stage: str, input_data: Any = None) -> Dict[str, Any]:
         """Create standardized success response."""
         return {
             'success': True,
-            'id': id,
             'stage': stage,
-            'output': result,  # Changed from 'result' to 'output' to avoid confusion with Prefect's .result()
+            'output': result,
             'input_data': input_data
         }
 
