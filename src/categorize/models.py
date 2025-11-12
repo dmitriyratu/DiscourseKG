@@ -138,6 +138,14 @@ class CategorizationInput(BaseModel):
     content: str = Field(..., description="The summarized content to analyze")
 
 
+class CategorizeContext(BaseModel):
+    """Processing context for categorization operation."""
+    id: str = Field(..., description="Unique identifier for the item")
+    categorization_input: CategorizationInput = Field(..., description="Categorization input data")
+    previous_error: Optional[str] = Field(None, description="Previous error message if retrying")
+    previous_failed_output: Optional[str] = Field(None, description="Previous failed output if retrying")
+
+
 class CategorizationOutput(BaseModel):
     """Output schema for the entire categorization"""
     entities: List[EntityMention] = Field(description="List of entities with their topic mentions")
@@ -154,10 +162,20 @@ class CategorizationOutput(BaseModel):
 
 
 class CategorizationResult(BaseModel):
-    """Result of categorization operation with metrics and metadata."""
+    """Result of categorization operation (artifact only, no metadata)."""
     id: str = Field(..., description="Unique identifier for the categorized content")
     success: bool = Field(..., description="Whether categorization was successful")
     data: Optional[CategorizationOutput] = Field(None, description="Categorized content data")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
     error_message: Optional[str] = Field(None, description="Error message if categorization failed")
 
+
+class CategorizeItem(BaseModel):
+    """Input record required for categorization."""
+
+    id: str = Field(..., description="Identifier of the pipeline item to categorize")
+    file_paths: Dict[str, str] = Field(default_factory=dict, description="Completed stage artifacts")
+    latest_completed_stage: str = Field(..., description="Last stage completed for this item")
+    title: Optional[str] = Field(None, description="Optional title metadata")
+    content_date: Optional[str] = Field(None, description="Optional content date metadata")
+    error_message: Optional[str] = Field(None, description="Previous error message if categorization is a retry")
+    failed_output: Optional[str] = Field(None, description="Previous failed output payload if retrying")

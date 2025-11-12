@@ -14,10 +14,23 @@ class SummarizationData(BaseModel):
 
 
 class SummarizationResult(BaseModel):
-    """Result of summarization operation with metrics and metadata."""
+    """Result of summarization operation (artifact only, no metadata)."""
     id: str = Field(..., description="Unique identifier for the summarized content")
     success: bool = Field(..., description="Whether summarization was successful")
     data: Optional[SummarizationData] = Field(None, description="Summarized content data")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
     error_message: Optional[str] = Field(None, description="Error message if summarization failed")
 
+
+class SummarizeItem(BaseModel):
+    """Input record required for summarization."""
+
+    id: str = Field(..., description="Identifier of the pipeline item to summarize")
+    file_paths: Dict[str, str] = Field(default_factory=dict, description="Completed stage artifacts")
+    latest_completed_stage: str = Field(..., description="Last stage completed for this item")
+
+
+class SummarizeContext(BaseModel):
+    """Processing context for summarization operation."""
+    id: str = Field(..., description="Unique identifier for the item")
+    text: str = Field(..., description="Text content to summarize")
+    target_tokens: int = Field(..., description="Target token count for summary")

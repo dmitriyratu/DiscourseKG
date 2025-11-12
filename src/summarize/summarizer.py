@@ -13,10 +13,11 @@ from sentence_transformers import SentenceTransformer, util
 from nltk.tokenize import sent_tokenize
 from typing import Optional, Dict, Any
 
-from src.summarize.models import SummarizationResult, SummarizationData
+from src.summarize.models import SummarizationResult, SummarizationData, SummarizeContext
 from src.config import config
 from src.summarize.config import summarization_config
 from src.utils.logging_utils import get_logger
+from src.shared.pipeline_definitions import StageResult
 
 logger = get_logger(__name__)
 
@@ -44,30 +45,24 @@ class Summarizer:
         self.tokenizer = tiktoken.get_encoding(summarization_config.SUMMARIZER_TOKENIZER)
         self.model = SentenceTransformer(summarization_config.SUMMARIZER_MODEL)
     
-    def summarize_content(self, processing_context: Dict[str, Any]) -> dict:
+    def summarize_content(self, processing_context: SummarizeContext) -> StageResult:
         """Summarize text to target token count."""
         start_time = time.time()
         
         # Extract what we need from the processing context
-        id = processing_context['id']
-        text = processing_context['text']
-        target_tokens = processing_context['target_tokens']
+        id = processing_context.id
+        text = processing_context.text
+        target_tokens = processing_context.target_tokens
         
         original_tokens = len(self.tokenizer.encode(text))
         
-        try:
-            if not text or not text.strip():
-                return self._create_result(id, text, "", 0.0, target_tokens)
-            
-            summary_text = text if original_tokens <= target_tokens else self._do_summarization(text, target_tokens)
-            compression_ratio = len(summary_text) / len(text) if text else 0.0
-            
-            return self._create_result(id, text, summary_text, compression_ratio, target_tokens)
-            
-        except Exception as e:
-            logger.error(f"Summarization failed for content {id}: {str(e)}")
-            # Let exception bubble up to flow processor
-            raise
+        if not text or not text.strip():
+            return self._create_result(id, text, "", 0.0, target_tokens)
+        
+        summary_text = text if original_tokens <= target_tokens else self._do_summarization(text, target_tokens)
+        compression_ratio = len(summary_text) / len(text) if text else 0.0
+        
+        return self._create_result(id, text, summary_text, compression_ratio, target_tokens)
 
     
     def _do_summarization(self, text: str, target_tokens: int) -> str:
@@ -166,8 +161,8 @@ class Summarizer:
         return final_scores
     
     def _create_result(self, id: str, original: str, summary: str, compression: float, 
-                      target_tokens: int) -> dict:
-        """Helper to create SummarizationResult."""
+                      target_tokens: int) -> StageResult:
+        """Helper to create StageResult with separated artifact and metadata."""
         summarization_data = SummarizationData(
             summarize=summary,
             original_word_count=len(original.split()),
@@ -176,11 +171,15 @@ class Summarizer:
             target_word_count=target_tokens
         )
         
-        result = SummarizationResult(
+        # Build artifact (what gets persisted)
+        artifact = SummarizationResult(
             id=id,
             success=True,
             data=summarization_data,
-            metadata={}
+            error_message=None
         )
         
-        return result.model_dump()
+        # No metadata for summarize stage currently
+        metadata = {}
+        
+        return StageResult(artifact=artifact.model_dump(), metadata=metadata)

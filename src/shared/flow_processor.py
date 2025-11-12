@@ -10,7 +10,7 @@ from typing import Dict, Any, Callable
 from prefect import task
 
 from tasks.orchestration import get_items
-from src.pipeline_config import PipelineStageStatus, PipelineStages
+from src.shared.pipeline_definitions import PipelineStageStatus, PipelineStages
 from src.shared.pipeline_state import PipelineStateManager
 from src.shared.persistence import save_data
 from src.utils.logging_utils import get_logger
@@ -75,11 +75,11 @@ class FlowProcessor:
             )
             
             # Update metadata if available
-            output_obj = result_data.get('output', {})
-            if metadata := output_obj.get('metadata'):
+            state_update = result_data.get('state_update')
+            if state_update:
                 manager._update_metadata_naturally(
                     id,
-                    **metadata
+                    **state_update
                 )
             
             self.logger.debug(f"Successfully completed {stage} for item {id} -> {output_file}")

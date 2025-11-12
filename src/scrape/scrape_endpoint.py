@@ -5,7 +5,8 @@ Scrape endpoint for collecting speaker transcripts.
 from typing import Dict, Any
 from src.shared.base_endpoint import BaseEndpoint
 from src.scrape.pipeline import scrape_content
-from src.pipeline_config import PipelineStages
+from src.shared.pipeline_definitions import PipelineStages
+from src.scrape.models import ScrapeItem, ScrapeContext
 
 
 class ScrapeEndpoint(BaseEndpoint):
@@ -16,33 +17,24 @@ class ScrapeEndpoint(BaseEndpoint):
     
     def execute(self, item: Dict[str, Any]) -> Dict[str, Any]:
         """Execute the scraping process for a single item."""
-        try:
-            
-            # Create processing context (immutable)
-            processing_context = {
-                'id': item['id'],
-                'source_url': item['source_url'],
-                'content_type': item.get('content_type'),
-                'metadata': {
-                    'title': item.get('title'),
-                    'content_date': item.get('content_date'),
-                    'speaker': item.get('speaker')
-                }
-            }
-            
-            # Process through scraping pipeline
-            result = scrape_content(processing_context)
-            
-            # Calculate word count
-            scrape = result.get('data', {}).get(PipelineStages.SCRAPE.value, '')
-            word_count = len(scrape.split()) if scrape else 0
-            result['word_count'] = word_count
-            
-            return self._create_success_response(
-                result=result,
-                stage=PipelineStages.SCRAPE.value
-            )
-            
-        except Exception as e:
-            
-            raise
+        scrape_item = ScrapeItem(**item)
+        
+        # Validate required fields
+        if not scrape_item.source_url:
+            raise ValueError(f"Missing source_url for item {scrape_item.id}")
+        
+        # Build processing context
+        processing_context = ScrapeContext(
+            id=scrape_item.id,
+            source_url=scrape_item.source_url
+        )
+
+        # Execute scraping pipeline - returns StageResult
+        stage_result = scrape_content(processing_context)
+
+        
+        return self._create_success_response(
+            result=stage_result.artifact,
+            stage=PipelineStages.SCRAPE.value,
+            state_update=stage_result.metadata
+        )

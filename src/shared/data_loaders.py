@@ -8,7 +8,7 @@ from typing import Dict, Any
 import pyprojroot
 
 from src.utils.logging_utils import get_logger
-from src.pipeline_config import PipelineStages
+from src.shared.pipeline_definitions import PipelineStages
 
 logger = get_logger(__name__)
 

@@ -13,7 +13,11 @@ from pydantic import BaseModel, Field
 
 from src.config import config
 from src.utils.logging_utils import get_logger
-from src.pipeline_config import pipeline_config, PipelineStages, PipelineStageStatus
+from src.shared.pipeline_definitions import (
+    PipelineConfig,
+    PipelineStages,
+    PipelineStageStatus,
+)
 
 logger = get_logger(__name__)
 
@@ -64,6 +68,7 @@ class PipelineStateManager:
     def __init__(self, state_file_path: str = None):
         self.state_file_path = Path(state_file_path or config.PIPELINE_STATE_FILE)
         self.state_file_path.parent.mkdir(parents=True, exist_ok=True)
+        self.pipeline_config = PipelineConfig()
     
     def create_state(self, id: str, run_timestamp: str, file_path: str = None, 
                     source_url: str = None, speaker: str = None, content_type: str = None) -> PipelineState:
@@ -119,6 +124,8 @@ class PipelineStateManager:
                            result_data: dict = None, file_path: str = None):
         """Update status of a specific stage for a data point"""
         # Read all existing states
+
+        
         states = self._read_all_states()
         
         # Find and update the matching state
@@ -152,7 +159,7 @@ class PipelineStateManager:
                 if status == PipelineStageStatus.COMPLETED:
                     # Stage completed successfully - update latest_completed_stage and next_stage
                     state_dict["latest_completed_stage"] = stage
-                    state_dict["next_stage"] = pipeline_config.get_next_stage(stage)
+                    state_dict["next_stage"] = self.pipeline_config.get_next_stage(stage)
                     state_dict["error_message"] = None  # Clear any previous errors
                     state_dict["failed_output"] = None  # Clear any previous failed output
                 elif status == PipelineStageStatus.FAILED:

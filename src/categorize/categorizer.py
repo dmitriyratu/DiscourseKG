@@ -9,10 +9,10 @@ from src.categorize.config import categorization_config
 from src.categorize.models import (
     TopicCategory, EntityType, SentimentLevel, 
     EntityMention, TopicMention, Subject, CategorizationInput, CategorizationOutput,
-    CategorizationResult
+    CategorizationResult, CategorizeContext
 )
 from src.utils.logging_utils import get_logger
-from src.pipeline_config import PipelineStages
+from src.shared.pipeline_definitions import PipelineStages, StageResult
 from src.categorize.prompts import SYSTEM_PROMPT, USER_PROMPT
 
 logger = get_logger(__name__)
@@ -109,14 +109,14 @@ class Categorizer:
         
         return error_context
     
-    def categorize_content(self, processing_context: Dict[str, Any]) -> Dict[str, Any]:
+    def categorize_content(self, processing_context: CategorizeContext) -> StageResult:
         """Categorize content from processing context."""
         
         # Extract what we need from the processing context
-        id = processing_context['id']
-        categorization_input = processing_context['categorization_input']
-        previous_error = processing_context.get('previous_error')
-        previous_failed_output = processing_context.get('previous_failed_output')
+        id = processing_context.id
+        categorization_input = processing_context.categorization_input
+        previous_error = processing_context.previous_error
+        previous_failed_output = processing_context.previous_failed_output
         
         if not categorization_input.content:
             raise ValueError("No content found in categorization input")
@@ -166,31 +166,26 @@ class Categorizer:
                                'error_type': 'validation_error', 
                                'content_length': len(categorization_input.content)})
             raise
-            
-        except Exception as e:
-            logger.error(f"LangChain categorization failed: {str(e)}", 
-                        extra={'stage': PipelineStages.CATEGORIZE.value, 
-                               'error_type': 'langchain_error', 
-                               'content_length': len(categorization_input.content)})
-            raise
     
-    def _create_result(self, id: str, categorization_data: CategorizationOutput, token_usage: Dict[str, int] = {}) -> Dict[str, Any]:
-        """Helper to create CategorizationResult."""
-        metadata = {
-            'model_used': categorization_config.OPENAI_MODEL, 
-            **token_usage
-            }
-        
-        categorization_result = CategorizationResult(
+    def _create_result(self, id: str, categorization_data: CategorizationOutput, token_usage: Dict[str, int] = {}) -> StageResult:
+        """Helper to create StageResult with separated artifact and metadata."""
+        # Build artifact (what gets persisted)
+        artifact = CategorizationResult(
             id=id,
             success=True,
             data=categorization_data,
-            metadata=metadata
+            error_message=None
         )
+        
+        # Extract metadata (for state updates only)
+        metadata = {
+            'model_used': categorization_config.OPENAI_MODEL, 
+            **token_usage
+        }
         
         entities_count = len(categorization_data.entities)
         mentions_count = sum(len(entity.mentions) for entity in categorization_data.entities)
         
         logger.debug(f"Successfully categorized content: {entities_count} entities, {mentions_count} mentions")
         
-        return categorization_result.model_dump()
+        return StageResult(artifact=artifact.model_dump(), metadata=metadata)

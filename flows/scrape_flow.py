@@ -1,6 +1,6 @@
 from prefect import flow, task
 from typing import Dict, Any
-from src.pipeline_config import PipelineStages
+from src.shared.pipeline_definitions import PipelineStages
 from src.shared.flow_processor import FlowProcessor
 from src.utils.logging_utils import get_logger
 from src.scrape.scrape_endpoint import ScrapeEndpoint

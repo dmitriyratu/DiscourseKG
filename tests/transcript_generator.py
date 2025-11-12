@@ -25,7 +25,7 @@ def generate_test_transcript(item: Dict[str, Any], content_type: str = "speech")
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
     # Use existing data from item
-    date = item.get('date', (datetime.now() - timedelta(days=0)).strftime("%Y-%m-%d"))
+    date = item.get('content_date', (datetime.now() - timedelta(days=0)).strftime("%Y-%m-%d"))
     source_url = item.get('source_url', f"https://example.com/test/{content_type}_{timestamp}")
     
     # Generate scrape content
