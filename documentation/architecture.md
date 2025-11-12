@@ -2,7 +2,7 @@
 
 ## High-Level Overview
 
-DiscourseKG transforms public communications from influential speakers into a knowledge graph. The system processes content through five stages with persistent state tracking for retry logic and incremental updates. Built on Prefect for orchestration and LangChain for LLM analysis, it produces queryable relationship data across speakers, entities, topics, and sentiment.
+DiscourseKG transforms public communications from influential speakers into a queryable knowledge graph. The system processes content through five sequential stages with persistent state tracking for fault tolerance and incremental updates. Built on Prefect for orchestration, LangChain for LLM analysis, and Neo4j for graph storage, it extracts and maps relationships across speakers, entities, topics, and sentiment.
 
 ```mermaid
 graph LR
@@ -50,42 +50,62 @@ graph LR
 </tr>
 <tr style="background-color: #4A90E2; color: #fff;">
 <td><strong>Prefect Flows</strong></td>
-<td>Define workflow tasks with dependencies, retries, and error handling</td>
-<td>Ensures reliable execution and automatic recovery from failures</td>
+<td>Define workflow tasks with dependencies, retries, and error handling via @flow and @task decorators</td>
+<td>Ensures reliable execution, automatic recovery from failures, and observable execution history</td>
+</tr>
+<tr style="background-color: #4A90E2; color: #fff;">
+<td><strong>FlowProcessor</strong></td>
+<td>Centralizes flow processing patterns (item iteration, error handling, timing, state updates)</td>
+<td>Eliminates code duplication across pipeline flows and ensures consistent behavior</td>
 </tr>
 <tr style="background-color: #4A90E2; color: #fff;">
 <td><strong>Orchestration</strong></td>
-<td>Queries pipeline state to find items ready for each stage</td>
+<td>Queries pipeline state to find items ready for each stage via get_items()</td>
 <td>Coordinates which items move to which stage without manual intervention</td>
 </tr>
 <tr style="background-color: #7ED321; color: #000;">
 <td><strong>Pipeline Endpoints</strong></td>
-<td>Execute stage-specific processing logic (find sources, extract text, summarize, categorize, load to Neo4j)</td>
-<td>Each stage has unique requirements but shares common execution patterns</td>
+<td>Execute stage-specific processing logic (discover sources, extract text, summarize, categorize, load to Neo4j)</td>
+<td>Each stage has unique requirements but shares common execution patterns via BaseEndpoint</td>
 </tr>
 <tr style="background-color: #50E3C2; color: #000;">
-<td><strong>Grapher & Neo4jLoader</strong></td>
-<td>Grapher loads and stitches data from multiple stages; Neo4jLoader preprocesses and loads into Neo4j</td>
-<td>Separates data assembly from Neo4j operations, enabling clean separation of concerns</td>
+<td><strong>Grapher</strong></td>
+<td>Loads and stitches data from multiple stages (discover, scrape, summarize, categorize) into unified context</td>
+<td>Assembles complete processing context before Neo4j ingestion</td>
+</tr>
+<tr style="background-color: #50E3C2; color: #000;">
+<td><strong>Neo4jLoader</strong></td>
+<td>Preprocesses data (sentiment aggregation, validation) and loads nodes/relationships to Neo4j</td>
+<td>Separates graph transformations from data assembly, handles Neo4j connection and Cypher execution</td>
+</tr>
+<tr style="background-color: #50E3C2; color: #000;">
+<td><strong>GraphPreprocessor</strong></td>
+<td>Computes aggregated sentiment, canonicalizes entities, validates data before Neo4j loading</td>
+<td>Ensures data quality and applies graph-specific transformations</td>
 </tr>
 <tr style="background-color: #F5A623; color: #000;">
 <td><strong>BaseEndpoint</strong></td>
-<td>Provides standardized `execute()` interface that all endpoints inherit</td>
+<td>Provides standardized execute() interface and response formatting that all endpoints inherit</td>
 <td>Ensures consistent behavior across all stages and reduces code duplication</td>
 </tr>
 <tr style="background-color: #F5A623; color: #000;">
 <td><strong>PipelineStateManager</strong></td>
-<td>Tracks each item's progress through stages in a JSONL state file</td>
+<td>Tracks each item's progress through stages in a JSONL state file with file paths, errors, and retry counts</td>
 <td>Enables retry logic, failure recovery, and incremental processing without blocking on individual failures</td>
 </tr>
 <tr style="background-color: #F5A623; color: #000;">
 <td><strong>Persistence</strong></td>
-<td>Handles file I/O for reading and writing JSON stage outputs</td>
-<td>Decouples business logic from file system operations</td>
+<td>Handles file I/O for saving JSON stage outputs with consistent file path structure</td>
+<td>Decouples business logic from file system operations and ensures consistent data organization</td>
+</tr>
+<tr style="background-color: #F5A623; color: #000;">
+<td><strong>DataLoader</strong></td>
+<td>Loads JSON data from file paths (supports relative and absolute paths)</td>
+<td>Centralizes data loading logic with consistent error handling and path resolution</td>
 </tr>
 <tr style="background-color: #E1BEE7; color: #000;">
 <td><strong>Data Storage</strong></td>
-<td>Persists stage outputs (JSON files), tracks pipeline state, and stores knowledge graph in Neo4j</td>
+<td>Persists stage outputs (JSON files), tracks pipeline state (JSONL), and stores knowledge graph in Neo4j</td>
 <td>Enables inspection, debugging, resumable processing, and queryable relationship data</td>
 </tr>
 </table>
@@ -94,6 +114,7 @@ graph LR
 graph LR
     subgraph ORCH_LAYER["Orchestration Layer"]
         PF["<b>Prefect Flows</b><br/>────────────────────<br/>discover_flow.py<br/>scrape_flow.py<br/>summarize_flow.py<br/>categorize_flow.py<br/>graph_flow.py"]
+        FP["<b>FlowProcessor</b><br/>────────────────────<br/>flow_processor.py<br/>process_items()"]
         ORCH["<b>Orchestration</b><br/>────────────────────<br/>orchestration.py<br/>get_items()"]
     end
     
@@ -109,12 +130,14 @@ graph LR
         BASE["<b>Base Endpoint</b><br/>────────────────────<br/>BaseEndpoint<br/>base_endpoint.py"]
         STATE["<b>Pipeline State</b><br/>────────────────────<br/>PipelineStateManager<br/>pipeline_state.py"]
         PERS["<b>Persistence</b><br/>────────────────────<br/>persistence.py"]
+        LOADER["<b>DataLoader</b><br/>────────────────────<br/>data_loaders.py"]
         LOG["<b>Logging</b><br/>────────────────────<br/>logging_utils.py"]
     end
     
     subgraph GRAPH_SERVICES["Graph Services"]
         GRAPHER["<b>Grapher</b><br/>────────────────────<br/>grapher.py<br/>Loads & stitches data"]
-        NEO4J_LOADER["<b>Neo4jLoader</b><br/>────────────────────<br/>loader.py<br/>Preprocesses & loads"]
+        PREPROC["<b>GraphPreprocessor</b><br/>────────────────────<br/>preprocessor.py<br/>Transforms & validates"]
+        NEO4J_LOADER["<b>Neo4jLoader</b><br/>────────────────────<br/>loader.py<br/>Loads to Neo4j"]
     end
     
     subgraph STORAGE_LAYER["Data Storage"]
@@ -123,12 +146,14 @@ graph LR
         NEO4J_DB[("Neo4j Database<br/>────────────────────<br/>Knowledge Graph<br/>Nodes & Relationships")]
     end
     
-    PF --> ORCH
-    ORCH -->|"coordinates"| DISC
-    ORCH -->|"coordinates"| SCRP
-    ORCH -->|"coordinates"| SUMM
-    ORCH -->|"coordinates"| CATG
-    ORCH -->|"coordinates"| GRAPH
+    PF --> FP
+    FP --> ORCH
+    ORCH -->|"get_items()"| STATE
+    FP -->|"coordinates"| DISC
+    FP -->|"coordinates"| SCRP
+    FP -->|"coordinates"| SUMM
+    FP -->|"coordinates"| CATG
+    FP -->|"coordinates"| GRAPH
     
     BASE -.->|"inherited by"| DISC
     BASE -.->|"inherited by"| SCRP
@@ -136,9 +161,9 @@ graph LR
     BASE -.->|"inherited by"| CATG
     BASE -.->|"inherited by"| GRAPH
     
-    BASE --> STATE
-    BASE --> PERS
     BASE --> LOG
+    FP --> STATE
+    FP --> PERS
     
     DISC -->|"writes"| FILES
     SCRP -->|"writes"| FILES
@@ -146,12 +171,17 @@ graph LR
     CATG -->|"writes"| FILES
     GRAPH -->|"reads"| FILES
     GRAPH -->|"uses"| GRAPHER
+    GRAPHER -->|"uses"| LOADER
     GRAPHER -->|"uses"| NEO4J_LOADER
+    NEO4J_LOADER -->|"uses"| PREPROC
     NEO4J_LOADER -->|"writes"| NEO4J_DB
     
     STATE -->|"updates"| STFILE
+    PERS -->|"saves"| FILES
+    LOADER -->|"reads"| FILES
     
     style PF fill:#4A90E2,color:#fff
+    style FP fill:#4A90E2,color:#fff
     style ORCH fill:#4A90E2,color:#fff
     style DISC fill:#7ED321,color:#000
     style SCRP fill:#7ED321,color:#000
@@ -161,8 +191,10 @@ graph LR
     style STATE fill:#F5A623,color:#000
     style PERS fill:#F5A623,color:#000
     style BASE fill:#F5A623,color:#000
+    style LOADER fill:#F5A623,color:#000
     style LOG fill:#F5A623,color:#000
     style GRAPHER fill:#50E3C2,color:#000
+    style PREPROC fill:#50E3C2,color:#000
     style NEO4J_LOADER fill:#50E3C2,color:#000
     style FILES fill:#E1BEE7,color:#000
     style STFILE fill:#E1BEE7,color:#000
@@ -173,7 +205,17 @@ graph LR
 
 ## Pipeline Flow & State Management
 
-Items progress through five sequential stages: discover (find sources), scrape (extract transcripts), summarize (condense if needed), categorize (extract entities/topics), and graph (load to Neo4j). The `PipelineStateManager` tracks each item's progress in a JSONL file at `data/state/pipeline_state.jsonl`, storing the current stage, completed stages, file paths, and error messages.
+Items progress through five sequential stages: discover (find sources), scrape (extract transcripts), summarize (condense if needed), categorize (extract entities/topics), and graph (load to Neo4j). Each stage is orchestrated by Prefect flows that use the `FlowProcessor` pattern for consistent item handling, error management, and state updates.
+
+The `PipelineStateManager` tracks each item's progress in a JSONL file at `data/state/pipeline_state.jsonl`, storing:
+- Core identifiers (id, run_timestamp)
+- Content metadata (speaker, content_type, title, content_date, source_url)
+- Stage tracking (latest_completed_stage, next_stage)
+- File paths for each completed stage
+- Error messages and failed outputs for retry context
+- Processing metrics (processing_time_seconds, retry_count)
+
+Flows query the state manager via `get_items(stage)` to find items ready for processing, then use `FlowProcessor.process_items()` to iterate through items with automatic timing, persistence, and state updates.
 
 ```mermaid
 graph LR
@@ -254,9 +296,57 @@ graph LR
 
 ---
 
+## Key Design Patterns
+
+### FlowProcessor Pattern
+Eliminates code duplication across pipeline flows by centralizing common processing logic:
+- Item iteration and coordination
+- Error handling with automatic state updates on failure
+- Timing and performance metrics
+- Result persistence via `save_data()`
+- Pipeline state updates via `PipelineStateManager`
+- Metadata extraction and natural state updates
+
+Each flow (except discover) uses `FlowProcessor.process_items(stage, task_func, data_type)` to process all items for a stage.
+
+### BaseEndpoint Pattern
+All pipeline endpoints inherit from `BaseEndpoint` to ensure consistent behavior:
+- Standardized `execute(item)` interface
+- Consistent response structure with `_create_success_response()`
+- Stage-specific logging setup
+
+### StageResult Separation
+Endpoints return `StageResult` with separated concerns:
+- `artifact`: Data to persist as stage output file (discoverer output, scraped text, etc.)
+- `metadata`: Pipeline state updates only (content_type, title, etc.)
+
+This separation ensures file outputs remain clean while allowing natural metadata accumulation in pipeline state.
+
+### Context Manager Pattern for Neo4j
+`Neo4jLoader` uses context manager for clean resource management:
+- Automatic connection establishment on `__enter__`
+- Automatic cleanup on `__exit__`
+- Prevents connection leaks
+
+### Error Handling Strategy
+Multi-level error handling for resilience:
+- **Prefect Task Level**: Automatic retries with exponential backoff (`retries=2, retry_delay_seconds=10`)
+- **FlowProcessor Level**: Catches exceptions, stores error context in pipeline state, continues with next items
+- **State Tracking**: Failed items keep `next_stage` unchanged for manual retry or debugging
+- **Error Context**: Stores `error_message` and `failed_output` for debugging and retry optimization
+
+---
+
 ## Knowledge Graph Topology
 
-The categorization stage outputs structured data designed for Neo4j ingestion, following a hierarchical graph structure with 5 node types and 4 relationship types. This topology enables queries like "How does Trump discuss Bitcoin?" or "Show all entities with positive sentiment in Technology topics."
+The categorization stage extracts entities, topics, and sentiment from communications. The graph stage preprocesses this data (computing aggregated sentiment, validating structure) before loading into Neo4j. The resulting graph follows a hierarchical structure with 5 node types and 4 relationship types, enabling queries like "How does Trump discuss Bitcoin?" or "Show all entities with positive sentiment in Technology topics."
+
+**Node Types:**
+- **Speaker**: Influential figures (politicians, business leaders, etc.) with attributes like name, role, industry, region
+- **Communication**: Individual speeches, interviews, debates with full text, metadata, and processing info
+- **Entity**: Canonical entities mentioned across communications (people, organizations, concepts)
+- **Mention**: Entity references within a specific topic context, with aggregated sentiment computed from subjects
+- **Subject**: Specific aspects or angles discussed about an entity, with individual sentiment and supporting quotes
 
 ```mermaid
 graph TB
@@ -267,8 +357,8 @@ graph TB
     
     subgraph "Level 2: Entity & Mentions"
         E["<b>Entity</b><br/>────────────────────<br/>canonical_name<br/>entity_type"]
-        M1["<b>Mention</b><br/>────────────────────<br/>topic<br/>context<br/>subjects[]"]
-        M2["<b>Mention</b><br/>────────────────────<br/>topic<br/>context<br/>subjects[]"]
+        M1["<b>Mention</b><br/>────────────────────<br/>topic<br/>context<br/>aggregated_sentiment"]
+        M2["<b>Mention</b><br/>────────────────────<br/>topic<br/>context<br/>aggregated_sentiment"]
     end
     
     subgraph "Level 3: Subjects"
@@ -302,4 +392,67 @@ graph TB
 - `HAS_MENTION`: Communication → Mention (what entities were discussed in what topics)
 - `REFERS_TO`: Mention → Entity (which entity is mentioned)
 - `HAS_SUBJECT`: Mention → Subject (specific subjects discussed about the entity)
+
+**Aggregated Sentiment:**
+
+The `GraphPreprocessor` computes aggregated sentiment for each Mention by analyzing sentiment across all its Subjects:
+
+```json
+{
+  "positive": {"count": 3, "prop": 0.6},
+  "negative": {"count": 1, "prop": 0.2},
+  "neutral": {"count": 1, "prop": 0.2}
+}
+```
+
+This enables topic-level sentiment queries without traversing to individual subjects.
+
+---
+
+## Data Flow
+
+### File Organization
+```
+data/
+├── state/
+│   └── pipeline_state.jsonl          # Pipeline state tracking
+└── {speaker}/                         # e.g., "donald_trump"
+    ├── discover/
+    │   └── {id}.json                  # Discovered items with metadata
+    ├── scrape/
+    │   └── {id}.json                  # Scraped transcripts
+    ├── summarize/
+    │   └── {id}.json                  # Summaries or pass-through
+    └── categorize/
+        └── {id}.json                  # Extracted entities and topics
+```
+
+### Stage Data Flow
+
+1. **Discover Stage**: Creates initial pipeline state entries and discover output files
+2. **Scrape Stage**: Reads discover output via DataLoader, extracts transcripts, saves scrape output
+3. **Summarize Stage**: Reads scrape output, conditionally summarizes, saves summarize output
+4. **Categorize Stage**: Reads summarize output, extracts entities/topics via LLM, saves categorize output
+5. **Graph Stage**: Reads all previous outputs via Grapher, preprocesses via GraphPreprocessor, loads to Neo4j via Neo4jLoader
+
+Each stage updates the pipeline state with its output file path and advances `next_stage`.
+
+---
+
+## Speaker Configuration
+
+Speakers are configured in `data/speakers.json` with attributes that become Speaker node properties:
+
+```json
+{
+  "name": "donald_trump",
+  "display_name": "Donald Trump",
+  "role": "US President",
+  "organization": "US Government",
+  "industry": "Politics",
+  "region": "United States"
+}
+```
+
+The discovery stage uses speaker configuration to find relevant content sources.
 
