@@ -11,5 +11,6 @@ from src.shared.pipeline_definitions import StageResult
 
 def load_to_graph(processing_context: GraphContext) -> StageResult:
     """Load preprocessed data into Neo4j knowledge graph."""
-    return Grapher().load_graph(processing_context)
+    with Grapher() as grapher:
+        return grapher.load_graph(processing_context)
 

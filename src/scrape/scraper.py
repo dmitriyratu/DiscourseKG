@@ -47,7 +47,8 @@ class Scraper:
             scrape=scrape_text,
             word_count=len(scrape_text.split()) if scrape_text else 0,
             title=scrape_data.get('title'),
-            content_date=scrape_data.get('content_date')
+            content_date=scrape_data.get('content_date'),
+            content_type=scrape_data.get('content_type')
         )
         
         # Build artifact (what gets persisted)
@@ -62,6 +63,7 @@ class Scraper:
         metadata = {
             "title": scrape_data.get("title"),
             "content_date": scrape_data.get("content_date"),
+            "content_type": scrape_data.get("content_type"),
         }
         
         logger.debug(f"Successfully scraped: {artifact.id} - {scraping_data.word_count} words")

@@ -15,6 +15,7 @@ class TopicCategory(str, Enum):
     DEFENSE = ("defense", "military spending, national security, defense")
     SOCIAL = ("social", "education, welfare, social programs, inequality")
     REGULATION = ("regulation", "oversight, regulations, compliance, standards")
+    OTHER = ("other", "anything else")
     
     def __new__(cls, value, description):
         obj = str.__new__(cls, value)

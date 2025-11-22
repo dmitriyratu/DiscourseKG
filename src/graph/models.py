@@ -22,16 +22,11 @@ class GraphContext(BaseModel):
     """Processing context for graph loading operation."""
     id: str = Field(..., description="Unique identifier for the item")
     file_paths: Dict[str, str] = Field(..., description="Paths to completed stage artifacts")
-    state_metadata: Dict[str, Optional[str]] = Field(..., description="Metadata from pipeline state")
+    speaker: str = Field(..., description="Speaker name for loading from speakers.json")
 
 
 class GraphItem(BaseModel):
     """Input record required for graph loading."""
-
     id: str = Field(..., description="Identifier of the pipeline item to load")
     file_paths: Dict[str, str] = Field(default_factory=dict, description="Completed stage artifacts")
-    speaker: Optional[str] = Field(None, description="Optional speaker metadata")
-    content_type: Optional[str] = Field(None, description="Optional content type metadata")
-    title: Optional[str] = Field(None, description="Optional title metadata")
-    content_date: Optional[str] = Field(None, description="Optional content date metadata")
-    source_url: Optional[str] = Field(None, description="Optional source URL metadata")
+    speaker: str = Field(..., description="Speaker name for the communication")

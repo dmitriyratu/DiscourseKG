@@ -25,6 +25,7 @@ class ScrapingData(BaseModel):
     word_count: int = Field(..., description="Word count of scraped content")
     title: Optional[str] = Field(None, description="Title of the scraped content")
     content_date: Optional[str] = Field(None, description="Date of the content")
+    content_type: Optional[str] = Field(None, description="Type of content (speech, interview, debate)")
 
 
 class ScrapingResult(BaseModel):

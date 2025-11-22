@@ -36,7 +36,7 @@ def generate_test_transcript(item: Dict[str, Any], content_type: str = "speech")
         "id": id,
         "title": f"Test {content_type.title()} ({timestamp})",
         "content_date": date,
-        "type": content_type,
+        "content_type": content_type,
         "source_url": source_url,
         "timestamp": timestamp,
         "scrape": scrape_content

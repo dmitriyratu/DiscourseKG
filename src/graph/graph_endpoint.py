@@ -20,17 +20,11 @@ class GraphEndpoint(BaseEndpoint):
         """Execute the Neo4j loading process for a single item."""
         graph_item = GraphItem(**item)
 
-        # Build processing context with file paths and state metadata
+        # Build processing context
         processing_context = GraphContext(
             id=graph_item.id,
             file_paths=graph_item.file_paths,
-            state_metadata={
-                'speaker': graph_item.speaker,
-                'content_type': graph_item.content_type,
-                'title': graph_item.title,
-                'content_date': graph_item.content_date,
-                'source_url': graph_item.source_url
-            }
+            speaker=graph_item.speaker
         )
 
         # Execute graph loading pipeline - returns StageResult
