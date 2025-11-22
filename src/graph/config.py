@@ -21,9 +21,6 @@ class GraphConfig:
     
     # Neo4j batch settings
     BATCH_SIZE: int = 100
-    
-    # Image base URL for visualization
-    IMAGE_BASE_URL: str = os.getenv("IMAGE_BASE_URL")
 
 
 graph_config = GraphConfig()

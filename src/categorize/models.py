@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field, field_validator
 from enum import Enum
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict
 
 
 class TopicCategory(str, Enum):

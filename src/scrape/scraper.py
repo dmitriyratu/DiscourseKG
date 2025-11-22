@@ -34,7 +34,7 @@ class Scraper:
         # For now, generate mock data
         scrape_data = generate_test_transcript(
             {'id': processing_context.id, 'source_url': processing_context.source_url}, 
-            'speech'  # Mock default
+            processing_context.content_type or 'speech'
         )
         
         return self._create_result(scrape_data)
@@ -46,9 +46,9 @@ class Scraper:
         scraping_data = ScrapingData(
             scrape=scrape_text,
             word_count=len(scrape_text.split()) if scrape_text else 0,
-            title=scrape_data.get('title'),
-            content_date=scrape_data.get('content_date'),
-            content_type=scrape_data.get('content_type')
+            title=scrape_data['title'],
+            content_date=scrape_data['content_date'],
+            content_type=scrape_data['content_type']
         )
         
         # Build artifact (what gets persisted)

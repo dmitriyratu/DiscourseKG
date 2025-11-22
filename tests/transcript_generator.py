@@ -21,6 +21,12 @@ def generate_test_transcript(item: Dict[str, Any], content_type: str = "speech")
     # Use existing ID from the item
     id = item['id']
     
+    # Extract index from ID (e.g., "discovered-item-2-20251122_021806" -> 2)
+    try:
+        index = int(id.split('-')[2])
+    except (IndexError, ValueError):
+        index = 0
+    
     # Generate timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
@@ -29,7 +35,7 @@ def generate_test_transcript(item: Dict[str, Any], content_type: str = "speech")
     source_url = item.get('source_url', f"https://example.com/test/{content_type}_{timestamp}")
     
     # Generate scrape content
-    scrape_content = generate_content_text(content_type, 0)
+    scrape_content = generate_content_text(content_type, index)
     
     # Return structured data (no file I/O)
     return {

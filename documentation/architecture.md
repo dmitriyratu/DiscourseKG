@@ -70,18 +70,8 @@ graph LR
 </tr>
 <tr style="background-color: #50E3C2; color: #000;">
 <td><strong>Grapher</strong></td>
-<td>Loads and stitches data from multiple stages (discover, scrape, summarize, categorize) into unified context</td>
-<td>Assembles complete processing context before Neo4j ingestion</td>
-</tr>
-<tr style="background-color: #50E3C2; color: #000;">
-<td><strong>Neo4jLoader</strong></td>
-<td>Preprocesses data (sentiment aggregation, validation) and loads nodes/relationships to Neo4j</td>
-<td>Separates graph transformations from data assembly, handles Neo4j connection and Cypher execution</td>
-</tr>
-<tr style="background-color: #50E3C2; color: #000;">
-<td><strong>GraphPreprocessor</strong></td>
-<td>Computes aggregated sentiment, canonicalizes entities, validates data before Neo4j loading</td>
-<td>Ensures data quality and applies graph-specific transformations</td>
+<td>Loads and stitches data from multiple stages, preprocesses (sentiment aggregation, validation), and loads to Neo4j</td>
+<td>Unified component that handles complete graph pipeline from data assembly to Neo4j ingestion</td>
 </tr>
 <tr style="background-color: #F5A623; color: #000;">
 <td><strong>BaseEndpoint</strong></td>
@@ -135,9 +125,7 @@ graph LR
     end
     
     subgraph GRAPH_SERVICES["Graph Services"]
-        GRAPHER["<b>Grapher</b><br/>────────────────────<br/>grapher.py<br/>Loads & stitches data"]
-        PREPROC["<b>GraphPreprocessor</b><br/>────────────────────<br/>preprocessor.py<br/>Transforms & validates"]
-        NEO4J_LOADER["<b>Neo4jLoader</b><br/>────────────────────<br/>loader.py<br/>Loads to Neo4j"]
+        GRAPHER["<b>Grapher</b><br/>────────────────────<br/>grapher.py<br/>Loads, preprocesses, loads to Neo4j"]
     end
     
     subgraph STORAGE_LAYER["Data Storage"]
@@ -172,9 +160,7 @@ graph LR
     GRAPH -->|"reads"| FILES
     GRAPH -->|"uses"| GRAPHER
     GRAPHER -->|"uses"| LOADER
-    GRAPHER -->|"uses"| NEO4J_LOADER
-    NEO4J_LOADER -->|"uses"| PREPROC
-    NEO4J_LOADER -->|"writes"| NEO4J_DB
+    GRAPHER -->|"writes"| NEO4J_DB
     
     STATE -->|"updates"| STFILE
     PERS -->|"saves"| FILES
@@ -194,8 +180,6 @@ graph LR
     style LOADER fill:#F5A623,color:#000
     style LOG fill:#F5A623,color:#000
     style GRAPHER fill:#50E3C2,color:#000
-    style PREPROC fill:#50E3C2,color:#000
-    style NEO4J_LOADER fill:#50E3C2,color:#000
     style FILES fill:#E1BEE7,color:#000
     style STFILE fill:#E1BEE7,color:#000
     style NEO4J_DB fill:#E1BEE7,color:#000
@@ -231,7 +215,7 @@ graph LR
     subgraph STAGE2["2. Scrape"]
         STATE2["<b>PipelineState</b><br/>────────────────────<br/>id: unique identifier<br/>speaker: speaker name<br/>source_url: content URL<br/>content_type: speech/debate/etc<br/>title: content title<br/>content_date: publication date<br/>────────────────────<br/>latest_completed: scrape<br/>next_stage: summarize<br/>────────────────────<br/>file_paths: dict<br/>  • discover: output file<br/>  • scrape: output file"]
         SCRAPE["<b>ScrapeEndpoint</b><br/>────────────────────<br/>execute(state)"]
-        SCRAPE_OUT["<b>Scrape Output</b><br/>────────────────────<br/>full_text: extracted transcript<br/>word_count: total word count<br/>content_date: publication date"]
+        SCRAPE_OUT["<b>ScrapingData</b><br/>────────────────────<br/>scrape: extracted transcript<br/>word_count: total word count<br/>title: content title<br/>content_date: publication date<br/>content_type: speech/debate/etc"]
     end
     
     subgraph STAGE3["3. Summarize"]
@@ -243,14 +227,13 @@ graph LR
     subgraph STAGE4["4. Categorize"]
         STATE4["<b>PipelineState</b><br/>────────────────────<br/>id: unique identifier<br/>────────────────────<br/>latest_completed: categorize<br/>next_stage: graph<br/>────────────────────<br/>file_paths: dict<br/>  • discover: output file<br/>  • scrape: output file<br/>  • summarize: output file<br/>  • categorize: output file"]
         CATEGORIZE["<b>CategorizeEndpoint</b><br/>────────────────────<br/>execute(state)"]
-        CAT_OUT["<b>CategorizationOutput</b><br/>────────────────────<br/>entities: list of entity mentions<br/>  • entity_name: canonical name<br/>  • entity_type: organization/person/etc<br/>  • topics: list of topic mentions"]
+        CAT_OUT["<b>CategorizationOutput</b><br/>────────────────────<br/>entities: EntityMention[]<br/>  • entity_name: canonical name<br/>  • entity_type: organization/person/etc<br/>  • mentions: TopicMention[]<br/>    - topic: TopicCategory<br/>    - context: summary<br/>    - subjects: Subject[]"]
     end
     
     subgraph STAGE5["5. Graph"]
         STATE5["<b>PipelineState</b><br/>────────────────────<br/>id: unique identifier<br/>────────────────────<br/>latest_completed: graph<br/>next_stage: null (complete)<br/>────────────────────<br/>file_paths: dict<br/>  • discover: output file<br/>  • scrape: output file<br/>  • summarize: output file<br/>  • categorize: output file"]
         GRAPH["<b>GraphEndpoint</b><br/>────────────────────<br/>execute(state)"]
-        GRAPHER["<b>Grapher</b><br/>────────────────────<br/>grapher.py<br/>Loads & stitches data"]
-        NEO4J_LOADER["<b>Neo4jLoader</b><br/>────────────────────<br/>loader.py<br/>Preprocesses & loads"]
+        GRAPHER["<b>Grapher</b><br/>────────────────────<br/>grapher.py<br/>Loads, preprocesses, & loads to Neo4j"]
         NEO4J[("Neo4j Database<br/>────────────────────<br/>Nodes & Relationships")]
     end
     
@@ -271,8 +254,7 @@ graph LR
     
     STATE4 -->|"Query: next_stage='graph'"| GRAPH
     GRAPH -->|"Reads categorize/scrape/<br/>summarize files"| GRAPHER
-    GRAPHER -->|"Stitches metadata"| NEO4J_LOADER
-    NEO4J_LOADER -->|"Loads to Neo4j"| NEO4J
+    GRAPHER -->|"Preprocesses & loads"| NEO4J
     GRAPH -->|"Updates state"| STATE5
     
     style PARAMS fill:#4A90E2,color:#fff
@@ -287,7 +269,6 @@ graph LR
     style CATEGORIZE fill:#7ED321,color:#000
     style GRAPH fill:#7ED321,color:#000
     style GRAPHER fill:#50E3C2,color:#000
-    style NEO4J_LOADER fill:#50E3C2,color:#000
     style SCRAPE_OUT fill:#FFF9E6,color:#000
     style SUM_OUT fill:#FFF9E6,color:#000
     style CAT_OUT fill:#FFF9E6,color:#000
@@ -323,7 +304,7 @@ Endpoints return `StageResult` with separated concerns:
 This separation ensures file outputs remain clean while allowing natural metadata accumulation in pipeline state.
 
 ### Context Manager Pattern for Neo4j
-`Neo4jLoader` uses context manager for clean resource management:
+`Grapher` uses context manager for clean resource management:
 - Automatic connection establishment on `__enter__`
 - Automatic cleanup on `__exit__`
 - Prevents connection leaks
@@ -339,32 +320,34 @@ Multi-level error handling for resilience:
 
 ## Knowledge Graph Topology
 
-The categorization stage extracts entities, topics, and sentiment from communications. The graph stage preprocesses this data (computing aggregated sentiment, validating structure) before loading into Neo4j. The resulting graph follows a hierarchical structure with 5 node types and 4 relationship types, enabling queries like "How does Trump discuss Bitcoin?" or "Show all entities with positive sentiment in Technology topics."
+The categorization stage extracts entities with hierarchical structure: `EntityMention` contains multiple `TopicMention` (one per topic), each containing multiple `Subject` (specific aspects discussed). The graph stage uses `Grapher` to load data from multiple stages, stitch communication metadata, preprocess entities (computing aggregated sentiment from subjects, validating structure), and load into Neo4j. The resulting graph follows a hierarchical structure with 5 node types and 4 relationship types, enabling queries like "How does Trump discuss Bitcoin?" or "Show all entities with positive sentiment in Technology topics."
 
 **Node Types:**
-- **Speaker**: Influential figures (politicians, business leaders, etc.) with attributes like name, role, industry, region
-- **Communication**: Individual speeches, interviews, debates with full text, metadata, and processing info
-- **Entity**: Canonical entities mentioned across communications (people, organizations, concepts)
-- **Mention**: Entity references within a specific topic context, with aggregated sentiment computed from subjects
-- **Subject**: Specific aspects or angles discussed about an entity, with individual sentiment and supporting quotes
+- **Speaker**: Influential figures with `name_id`, `display_name`, `role`, `organization`, `industry`, `region`
+- **Communication**: Speeches, interviews, debates with `title`, `content_type`, `content_date`, `source_url`, `full_text`, `word_count`, `was_summarized`, `compression_ratio`
+- **Entity**: Canonical entities (`canonical_name`, `entity_type`) mentioned across communications - types include organization, location, person, program, product, event, other
+- **Mention**: Entity references within a specific topic context (`topic`, `context`, `aggregated_sentiment`) - topics include economics, technology, foreign_affairs, healthcare, energy, defense, social, regulation, other
+- **Subject**: Specific aspects discussed about an entity (`subject_name`, `sentiment`, `quotes[]`) with sentiment values: positive, negative, neutral, unclear
+
+All nodes include a `name` property for zero-config visualization in Neo4j Browser and Bloom.
 
 ```mermaid
 graph TB
     subgraph "Level 1: Speaker & Communication"
         S["<b>Speaker</b><br/>────────────────────<br/>name<br/>role<br/>industry<br/>region<br/>influence_score"]
-        C["<b>Communication</b><br/>────────────────────<br/>id<br/>title<br/>content_type<br/>content_date<br/>source_url<br/>full_text<br/>word_count<br/>was_summarized"]
+        C["<b>Communication</b><br/>────────────────────<br/>name (title)<br/>id<br/>content_type<br/>content_date<br/>source_url<br/>full_text<br/>word_count<br/>was_summarized"]
     end
     
     subgraph "Level 2: Entity & Mentions"
-        E["<b>Entity</b><br/>────────────────────<br/>canonical_name<br/>entity_type"]
-        M1["<b>Mention</b><br/>────────────────────<br/>topic<br/>context<br/>aggregated_sentiment"]
-        M2["<b>Mention</b><br/>────────────────────<br/>topic<br/>context<br/>aggregated_sentiment"]
+        E["<b>Entity</b><br/>────────────────────<br/>name (canonical_name)<br/>entity_type"]
+        M1["<b>Mention</b><br/>────────────────────<br/>name (topic)<br/>context<br/>aggregated_sentiment"]
+        M2["<b>Mention</b><br/>────────────────────<br/>name (topic)<br/>context<br/>aggregated_sentiment"]
     end
     
     subgraph "Level 3: Subjects"
-        SU1["<b>Subject</b><br/>────────────────────<br/>subject_name<br/>sentiment<br/>quotes[]"]
-        SU2["<b>Subject</b><br/>────────────────────<br/>subject_name<br/>sentiment<br/>quotes[]"]
-        SU3["<b>Subject</b><br/>────────────────────<br/>subject_name<br/>sentiment<br/>quotes[]"]
+        SU1["<b>Subject</b><br/>────────────────────<br/>name (subject_name)<br/>sentiment<br/>quotes[]"]
+        SU2["<b>Subject</b><br/>────────────────────<br/>name (subject_name)<br/>sentiment<br/>quotes[]"]
+        SU3["<b>Subject</b><br/>────────────────────<br/>name (subject_name)<br/>sentiment<br/>quotes[]"]
     end
     
     S -->|DELIVERED| C
@@ -395,7 +378,7 @@ graph TB
 
 **Aggregated Sentiment:**
 
-The `GraphPreprocessor` computes aggregated sentiment for each Mention by analyzing sentiment across all its Subjects:
+The `Grapher` computes aggregated sentiment for each Mention during preprocessing by analyzing sentiment across all its Subjects:
 
 ```json
 {
@@ -405,7 +388,7 @@ The `GraphPreprocessor` computes aggregated sentiment for each Mention by analyz
 }
 ```
 
-This enables topic-level sentiment queries without traversing to individual subjects.
+Proportions are rounded to 3 decimal places (configurable via `graph_config.DECIMAL_PRECISION`). This enables topic-level sentiment queries without traversing to individual subjects.
 
 ---
 
@@ -415,27 +398,36 @@ This enables topic-level sentiment queries without traversing to individual subj
 ```
 data/
 ├── state/
-│   └── pipeline_state.jsonl          # Pipeline state tracking
-└── {speaker}/                         # e.g., "donald_trump"
-    ├── discover/
-    │   └── {id}.json                  # Discovered items with metadata
-    ├── scrape/
-    │   └── {id}.json                  # Scraped transcripts
-    ├── summarize/
-    │   └── {id}.json                  # Summaries or pass-through
-    └── categorize/
-        └── {id}.json                  # Extracted entities and topics
+│   └── pipeline_state_{env}.jsonl    # Pipeline state tracking
+└── {env}/                             # e.g., "test" or "prod"
+    ├── speakers.json                  # Speaker configuration
+    └── {speaker}/                     # e.g., "test_speaker"
+        ├── discover/
+        │   └── {content_type}/
+        │       └── {id}.json          # Discovered items with metadata
+        ├── scrape/
+        │   └── {content_type}/
+        │       └── {id}.json          # ScrapingData with scrape text
+        ├── summarize/
+        │   └── {content_type}/
+        │       └── {id}.json          # Summaries with compression metrics
+        ├── categorize/
+        │   └── {content_type}/
+        │       └── {id}.json          # EntityMention[] with hierarchical structure
+        └── graph/
+            └── {content_type}/
+                └── {id}.json          # Graph loading results
 ```
 
 ### Stage Data Flow
 
 1. **Discover Stage**: Creates initial pipeline state entries and discover output files
-2. **Scrape Stage**: Reads discover output via DataLoader, extracts transcripts, saves scrape output
-3. **Summarize Stage**: Reads scrape output, conditionally summarizes, saves summarize output
-4. **Categorize Stage**: Reads summarize output, extracts entities/topics via LLM, saves categorize output
-5. **Graph Stage**: Reads all previous outputs via Grapher, preprocesses via GraphPreprocessor, loads to Neo4j via Neo4jLoader
+2. **Scrape Stage**: Reads discover output via DataLoader, extracts transcripts, saves `ScrapingData` with scrape text, word_count, title, content_date, content_type
+3. **Summarize Stage**: Reads scrape output, conditionally summarizes, saves summarize output with compression metrics
+4. **Categorize Stage**: Reads summarize output, extracts hierarchical entities via LLM (`EntityMention` → `TopicMention` → `Subject`), saves categorize output
+5. **Graph Stage**: Reads all previous outputs, stitches communication metadata, preprocesses entities (computes aggregated sentiment), validates structure, and loads to Neo4j via Grapher
 
-Each stage updates the pipeline state with its output file path and advances `next_stage`.
+Each stage returns `StageResult` with separated `artifact` (persisted data) and `metadata` (state updates), advancing `next_stage` on success.
 
 ---
 

@@ -17,7 +17,6 @@ from src.shared.pipeline_definitions import PipelineStages, StageResult
 from src.graph.config import graph_config
 from src.config import config
 from src.utils.logging_utils import get_logger
-from src.categorize.models import TopicCategory, EntityType
 
 logger = get_logger(__name__)
 
@@ -135,21 +134,11 @@ class Grapher:
         # Validate against schema
         speakers_registry = SpeakerRegistry(**speakers_data)
         
-        # Look up speaker by name (key in dict)
-        if speaker_name not in speakers_registry.speakers:
-            # Try searching by display_name as fallback
-            for key, speaker in speakers_registry.speakers.items():
-                if speaker.display_name == speaker_name:
-                    speaker_name = key
-                    break
-            else:
-                raise ValueError(f"Speaker '{speaker_name}' not found in speakers.json")
-        
         speaker_obj = speakers_registry.speakers[speaker_name]
         
-        # Return as dict with 'name' field for Neo4j
         return {
-            'name': speaker_name,
+            'name_id': speaker_name,
+            'name': speaker_obj.display_name,
             'display_name': speaker_obj.display_name,
             'role': speaker_obj.role,
             'organization': speaker_obj.organization,
@@ -248,7 +237,7 @@ class Grapher:
         stats['nodes_created'] += speaker_stats['nodes_created']
         
         # Load Communication node
-        comm_stats = self._load_communication_node(session, data['communication'], data['speaker']['name'])
+        comm_stats = self._load_communication_node(session, data['communication'], data['speaker']['name_id'])
         stats['nodes_created'] += comm_stats['nodes_created']
         stats['relationships_created'] += comm_stats['relationships_created']
         
@@ -266,7 +255,7 @@ class Grapher:
     def _create_constraints(self, session):
         """Create Neo4j constraints (idempotent)."""
         constraints = [
-            "CREATE CONSTRAINT speaker_name IF NOT EXISTS FOR (s:Speaker) REQUIRE s.name IS UNIQUE",
+            "CREATE CONSTRAINT speaker_name_id IF NOT EXISTS FOR (s:Speaker) REQUIRE s.name_id IS UNIQUE",
             "CREATE CONSTRAINT communication_id IF NOT EXISTS FOR (c:Communication) REQUIRE c.id IS UNIQUE",
             "CREATE CONSTRAINT entity_name IF NOT EXISTS FOR (e:Entity) REQUIRE e.canonical_name IS UNIQUE"
         ]
@@ -280,8 +269,9 @@ class Grapher:
     def _load_speaker_node(self, session, speaker: Dict[str, Any]) -> Dict[str, int]:
         """Load Speaker node."""
         query = """
-        MERGE (s:Speaker {name: $name})
-        SET s.display_name = $display_name,
+        MERGE (s:Speaker {name_id: $name_id})
+        SET s.name = $name,
+            s.display_name = $display_name,
             s.role = $role,
             s.organization = $organization,
             s.industry = $industry,
@@ -292,12 +282,13 @@ class Grapher:
         result = session.run(query, **speaker)
         return self._create_stats(nodes=1 if result.single() else 0)
     
-    def _load_communication_node(self, session, communication: Dict[str, Any], speaker_name: str) -> Dict[str, int]:
+    def _load_communication_node(self, session, communication: Dict[str, Any], speaker_name_id: str) -> Dict[str, int]:
         """Load Communication node and DELIVERED relationship."""
         query = """
-        MATCH (s:Speaker {name: $speaker_name})
+        MATCH (s:Speaker {name_id: $speaker_name_id})
         MERGE (c:Communication {id: $id})
-        SET c.title = $title,
+        SET c.name = $title,
+            c.title = $title,
             c.content_type = $content_type,
             c.content_date = $content_date,
             c.source_url = $source_url,
@@ -309,7 +300,7 @@ class Grapher:
         RETURN c, r
         """
         
-        params = {**communication, 'speaker_name': speaker_name}
+        params = {**communication, 'speaker_name_id': speaker_name_id}
         result = session.run(query, **params)
         record = result.single()
         
@@ -338,32 +329,18 @@ class Grapher:
         
         return self._create_stats(nodes=nodes_created, relationships=relationships_created)
     
-    def _get_entity_image_url(self, entity_type: str) -> str:
-        """Get image URL for entity type."""
-        return f"{graph_config.IMAGE_BASE_URL}/entities/other.png"
-        # return f"{graph_config.IMAGE_BASE_URL}/entities/{entity_type}.png"
-    
-    def _get_topic_image_url(self, topic: str) -> str:
-        """Get image URL for topic category."""
-        return f"{graph_config.IMAGE_BASE_URL}/topics/other.png"
-        # return f"{graph_config.IMAGE_BASE_URL}/topics/{topic}.png"
-    
     def _load_entity_node(self, session, entity: Dict[str, Any]) -> Dict[str, int]:
-        """Load Entity node with image URL for visualization."""
-        entity_type = entity.get('entity_type', 'other')
-        image_url = self._get_entity_image_url(entity_type)
-        
+        """Load Entity node."""
         query = """
         MERGE (e:Entity {canonical_name: $entity_name})
-        SET e.entity_type = $entity_type,
-            e.image_url = $image_url
+        SET e.name = $entity_name,
+            e.entity_type = $entity_type
         RETURN e
         """
         
         result = session.run(query, 
             entity_name=entity['entity_name'],
-            entity_type=entity_type,
-            image_url=image_url
+            entity_type=entity['entity_type']
         )
         
         return self._create_stats(nodes=1 if result.single() else 0)
@@ -372,9 +349,8 @@ class Grapher:
                                    mention: Dict[str, Any]) -> Dict[str, int]:
         """Load Mention node with Subjects and create relationships."""
         topic = mention.get('topic', '')
-        image_url = self._get_topic_image_url(topic)
         
-        # Create Mention node with aggregated_sentiment and image URL
+        # Create Mention node with aggregated_sentiment
         mention_query = """
         MATCH (c:Communication {id: $comm_id})
         MATCH (e:Entity {canonical_name: $entity_name})
@@ -382,8 +358,7 @@ class Grapher:
             name: $topic,
             topic: $topic,
             context: $context,
-            aggregated_sentiment: $aggregated_sentiment,
-            image_url: $image_url
+            aggregated_sentiment: $aggregated_sentiment
         })
         CREATE (c)-[:HAS_MENTION]->(m)
         CREATE (m)-[:REFERS_TO]->(e)
@@ -395,8 +370,7 @@ class Grapher:
             entity_name=entity_name,
             topic=topic,
             context=mention['context'],
-            aggregated_sentiment=json.dumps(mention.get('aggregated_sentiment', {})),
-            image_url=image_url
+            aggregated_sentiment=json.dumps(mention['aggregated_sentiment'])
         )
         
         mention_node = result.single()
@@ -419,6 +393,7 @@ class Grapher:
         query = """
         MATCH (m:Mention) WHERE elementId(m) = $mention_id
         CREATE (s:Subject {
+            name: $subject_name,
             subject_name: $subject_name,
             sentiment: $sentiment,
             quotes: $quotes
