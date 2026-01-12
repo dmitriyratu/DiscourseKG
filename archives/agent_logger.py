@@ -10,7 +10,7 @@ from functools import wraps
 class AgentLogger:
     """Logs agent interactions with tools for debugging and optimization."""
     
-    def __init__(self, log_dir: str = "agent_traces"):
+    def __init__(self, log_dir: str = "nuagent_traces"):
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")

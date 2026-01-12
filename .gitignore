@@ -196,6 +196,9 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# LangGraph
+.langgraph_api/
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
@@ -205,7 +208,9 @@ __marimo__/
 *.json
 
 # Playground testing notebooks
-playground/
+
+# Archives
+archives/
 
 # Logs directory
 logs/
