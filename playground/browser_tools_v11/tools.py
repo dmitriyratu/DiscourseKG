@@ -49,8 +49,10 @@ get_navigation_map_tool = StructuredTool.from_function(
     coroutine=_nav_wrapper,
     name="get_navigation_map",
     description=(
-        "Returns a lightweight map of buttons, pagination links, and navigation bars. "
-        "Use this first to see HOW to move through the site (e.g. find the 'Next' button selector)."
+        "Returns a lightweight map of navigation elements (buttons, pagination links, nav bars). "
+        "Returns HTML snippets with attributes (class, id, href, aria-label, title) for interactive elements. "
+        "Use this first to understand the site's navigation structure before harvesting content. "
+        "Returns JSON: {{'success': bool, 'url': str, 'navigation_map': str}}"
     ),
     args_schema=NavInput
 )
@@ -59,8 +61,10 @@ harvest_content_tool = StructuredTool.from_function(
     coroutine=_harvest_wrapper,
     name="harvest_content",
     description=(
-        "Performs an optional action (scroll/click) and returns a structured list of content links and context. "
-        "Use this to get the actual data (titles, dates, URLs) from the page."
+        "Performs an optional action (scroll/click) and returns a structured list of content links with context. "
+        "Supported actions: {{'type': 'scroll', 'value': N}} to scroll N times, or {{'type': 'click', 'value': '.css-selector'}} to click an element. "
+        "Returns JSON: {{'success': bool, 'url': str, 'links_found': int, 'links': [{{'url': str, 'text': str, 'context': str}}]}}. "
+        "Browser session is persistent across tool calls; actions are cumulative."
     ),
     args_schema=HarvestInput
 )

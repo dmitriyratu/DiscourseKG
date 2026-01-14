@@ -9,4 +9,5 @@ def load_prompts():
         data = yaml.safe_load(f)
     return data['system_prompt'], data.get('user_prompt', '')
 
+# Load base prompts - date formatting will be done in agent.py
 SYSTEM_PROMPT, USER_PROMPT = load_prompts()

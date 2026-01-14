@@ -46,6 +46,7 @@ async def get_navigation_map(url: str, crawler: Optional[AsyncWebCrawler] = None
     config = CrawlerRunConfig(
         cache_mode=CacheMode.BYPASS,
         simulate_user=True,
+        verbose=False,
         excluded_tags=['script', 'style', 'img', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']
     )
     
@@ -84,18 +85,23 @@ async def get_navigation_map(url: str, crawler: Optional[AsyncWebCrawler] = None
 
 async def harvest_content(url: str, action: Optional[Dict] = None, crawler: Optional[AsyncWebCrawler] = None) -> HarvestResult:
     """Perform action and extract links with context."""
-    js_code, delay = [], 0.5
+    js_code, delay = [], 2.0
     
     if action:
         if action["type"] == "scroll":
             js_code.append(f"for(let i=0;i<{action.get('value',3)};i++){{window.scrollTo(0,document.body.scrollHeight);await new Promise(r=>setTimeout(r,1000));}}")
-            delay = 2.0
+            delay = 3.0
         elif action["type"] == "click":
             js_code.append(f"const el=document.querySelector('{action.get('value')}');if(el){{el.scrollIntoView({{behavior:'smooth',block:'center'}});await new Promise(r=>setTimeout(r,500));el.click();await new Promise(r=>setTimeout(r,1500));}}")
-            delay = 1.5
+            delay = 2.5
+    
+    # Wait for content to load
+    if not js_code:
+        js_code.append("await new Promise(r=>setTimeout(r,2000));")
 
     config = CrawlerRunConfig(
         cache_mode=CacheMode.BYPASS, simulate_user=True,
+        verbose=False,
         js_code=js_code, delay_before_return_html=delay,
         excluded_tags=['script', 'style']
     )
@@ -105,7 +111,8 @@ async def harvest_content(url: str, action: Optional[Dict] = None, crawler: Opti
         return HarvestResult(False, url, error=result.error_message)
     
     tree = HTMLParser(result.cleaned_html or result.html)
-    [n.decompose() for n in tree.css("header, nav, footer, script, style, .nav, .menu, .sidebar")]
+    # Only remove navigation UI elements, not semantic nav containers that might have content
+    [n.decompose() for n in tree.css("header, footer, script, style")]
     
     content_links, seen = [], set()
     for link in tree.css("a[href]"):

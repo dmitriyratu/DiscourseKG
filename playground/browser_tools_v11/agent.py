@@ -1,61 +1,79 @@
-"""LangGraph agent using the Split Navigation/Harvesting architecture."""
-import json
+"""LangChain agent using modern create_agent API (LangChain 1.0+)."""
 from datetime import datetime, timedelta
-from typing import TypedDict, Annotated, List
+from typing import List, Optional
+from pydantic import BaseModel
+from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
-from langgraph.graph import StateGraph, END
-from langgraph.prebuilt import ToolNode
-from langgraph.graph.message import add_messages
+from langchain_core.callbacks import BaseCallbackHandler
+from langchain.agents import create_agent
 from playground.browser_tools_v11.tools import SCRAPING_TOOLS
 from playground.browser_tools_v11 import core
 from playground.browser_tools_v11.prompts import SYSTEM_PROMPT, USER_PROMPT
+from playground.browser_tools_v11.callbacks import AgentLogger
 
-class AgentState(TypedDict):
-    messages: Annotated[list[BaseMessage], add_messages]
+load_dotenv()
+
+class ContentLink(BaseModel):
+    date: str
+    title: str
+    url: str
+
+class ScrapingResult(BaseModel):
+    total_found: int
+    links: List[ContentLink]
 
 class ScrapingAgent:
     def __init__(self):
-        self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0).bind_tools(SCRAPING_TOOLS)
-        
-        workflow = StateGraph(AgentState)
-        workflow.add_node("agent", lambda state: {"messages": [self.llm.invoke(state["messages"])]})
-        workflow.add_node("tools", ToolNode(SCRAPING_TOOLS))
-        workflow.set_entry_point("agent")
-        workflow.add_conditional_edges(
-            "agent", 
-            lambda state: "tools" if state["messages"][-1].tool_calls else END
-        )
-        workflow.add_edge("tools", "agent")
-        self.graph = workflow.compile()
+        self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0).bind(parallel_tool_calls=False)
 
-    async def run(self, url: str, start_date: str, end_date: str) -> dict:
-
+    async def run(
+        self, 
+        url: str, 
+        start_date: str, 
+        end_date: str, 
+        callbacks: Optional[List[BaseCallbackHandler]] = None,
+        verbose: bool = True
+    ) -> dict:
         start_dt = datetime.strptime(start_date, "%Y-%m-%d")
         stop_date = (start_dt - timedelta(days=1)).strftime("%Y-%m-%d")
 
-        system_msg = SYSTEM_PROMPT.format(
-            start_date=start_date, 
-            end_date=end_date, 
-            stop_date=stop_date
-        )
         input_msg = USER_PROMPT.format(
             url=url, 
             start_date=start_date, 
-            end_date=end_date
+            end_date=end_date,
+            stop_date=stop_date
         )
         
-        state = {"messages": [SystemMessage(content=system_msg), HumanMessage(content=input_msg)]}
-        config = {"recursion_limit": 100}
+        if callbacks is None and verbose:
+            callbacks = [AgentLogger()]
         
+        # Modern approach: create_agent with system_prompt
+        agent = create_agent(
+            model=self.llm,
+            tools=SCRAPING_TOOLS,
+            system_prompt=SYSTEM_PROMPT
+        )
+        
+        # Run agent with browser session
         async with core.AsyncWebCrawler(config=core.BROWSER_CONFIG) as crawler:
             core.ACTIVE_CRAWLER = crawler
-            result = await self.graph.ainvoke(state, config=config)
-                
-        raw_output = result["messages"][-1].content
-        try:
-            parsed = json.loads(raw_output)
-        except Exception:
-            parsed = None
+            
+            result = await agent.ainvoke(
+                {"messages": [{"role": "user", "content": input_msg}]},
+                config={
+                    "callbacks": callbacks or [],
+                    "recursion_limit": 50,
+                    "max_execution_time": 300  # 5 minute timeout
+                }
+            )
         
-        return {"output": raw_output, "parsed": parsed}
+        # Extract final message
+        raw_output = result["messages"][-1].content if result.get("messages") else ""
+        
+        # Structure the output using LLM
+        structured_llm = self.llm.with_structured_output(ScrapingResult)
+        parsed_result = await structured_llm.ainvoke(
+            f"Extract the structured data from this response:\n\n{raw_output}"
+        )
+        
+        return {"output": raw_output, "parsed": parsed_result}
