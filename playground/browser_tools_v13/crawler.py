@@ -15,7 +15,44 @@ SESSION_ID = "scraping_session"
 def _build_js_code(action: NavigationAction | None) -> list[str]:
     """Generate JS code for the given action."""
     if not action:
-        return []
+        # Initial load: trigger infinite-scroll loads, reach pagination at bottom.
+        # Conservative pagination-first: rel="next" → higher cap, scroll to bottom; else 5 scrolls.
+        return ["""
+        (async () => {
+            const delay = ms => new Promise(r => setTimeout(r, ms));
+            const hasPagination = !!document.querySelector('link[rel="next"], a[rel="next"]');
+            const maxScrolls = hasPagination ? 12 : 5;
+            const maxNoNewContent = 2;
+            let noNewContentCount = 0;
+            let scrollCount = 0;
+
+            while (noNewContentCount < maxNoNewContent && scrollCount < maxScrolls) {
+                const prevHeight = document.body.scrollHeight;
+                window.scrollBy(0, window.innerHeight);
+                await delay(300);
+                scrollCount++;
+
+                let start = Date.now();
+                while (document.body.scrollHeight === prevHeight && Date.now() - start < 2000) {
+                    await delay(100);
+                }
+
+                if (document.body.scrollHeight === prevHeight) {
+                    noNewContentCount++;
+                } else {
+                    noNewContentCount = 0;
+                }
+
+                if (window.pageYOffset + window.innerHeight >= document.body.scrollHeight - 10
+                    && document.body.scrollHeight === prevHeight) {
+                    break;
+                }
+            }
+
+            window.scrollTo(0, document.body.scrollHeight);
+            await delay(500);
+        })();
+        """]
     
     if action.type == "scroll":
         return [f"""
@@ -69,15 +106,15 @@ def _create_extraction_strategy() -> LLMExtractionStrategy:
     return LLMExtractionStrategy(
         llm_config=LLMConfig(
             provider="openai/gpt-4o-mini", 
-            api_token=os.getenv("OPENAI_API_KEY")
+            api_token=os.getenv("OPENAI_API_KEY"),
+            temperature = 0.0,
             ),
         instruction=EXTRACTION_PROMPT,
         schema=schema,
         extraction_type="schema",
         input_format="markdown",
         force_json_response=True,  # Force JSON output
-        temperature=0.0,  # Pass directly as kwarg
-        response_format={"type": "json_object"},  # Force JSON object (not array)
+        apply_chunking=False,
     )
 
 
@@ -91,13 +128,14 @@ class PageCrawler:
                       reuse_session: bool = False,
                       result_callback: Callable | None = None) -> PageExtraction:
         """Execute action and extract articles + next navigation."""
+        extraction_strategy = _create_extraction_strategy()
         config = CrawlerRunConfig(
             cache_mode=CacheMode.BYPASS,
             simulate_user=True,
             page_timeout=30000,
             remove_overlay_elements=True,
             word_count_threshold=100,
-            extraction_strategy=_create_extraction_strategy(),
+            extraction_strategy=extraction_strategy,
             js_code=_build_js_code(action),
             js_only=reuse_session,
             session_id=SESSION_ID,
@@ -108,7 +146,7 @@ class PageCrawler:
         result = await self.crawler.arun(url, config=config, session_id=SESSION_ID)
         
         if result_callback:
-            result_callback(result)
+            result_callback(result, extraction_strategy)
         
         if not result.success or not result.extracted_content:
             return PageExtraction()

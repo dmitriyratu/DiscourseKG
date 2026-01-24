@@ -1,5 +1,5 @@
 """Compact rich console logging for agent visibility."""
-from datetime import date
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 from rich.console import Console
 from rich.panel import Panel
@@ -37,13 +37,15 @@ class AgentLogger:
     async def observe_with_logging(self, page_crawler: "PageCrawler", url: str, 
                                    action: NavigationAction | None = None, 
                                    reuse_session: bool = False) -> PageExtraction:
-        """Wrapper around PageCrawler.observe() that logs context size."""
-        def log_result(result):
-            """Callback to log context size from crawl result."""
-            if hasattr(result, 'markdown') and result.markdown:
-                content_size = len(result.markdown)
-                estimated_tokens = content_size // 4
-                self._log_llm_context(content_size, estimated_tokens)
+        """Wrapper around PageCrawler.observe() that logs token usage."""
+        def log_result(result, extraction_strategy):
+            total_usage = getattr(extraction_strategy, 'total_usage', None)
+            if total_usage:
+                input_tokens = getattr(total_usage, 'prompt_tokens', 0)
+                output_tokens = getattr(total_usage, 'completion_tokens', 0)
+                total = getattr(total_usage, 'total_tokens', input_tokens + output_tokens)
+                if total > 0:
+                    console.print(f"[dim]LLM context: {input_tokens:,} in + {output_tokens:,} out = {total:,} tokens[/dim]")
         
         return await page_crawler.observe(url, action, reuse_session, result_callback=log_result)
     
@@ -54,12 +56,23 @@ class AgentLogger:
         new_articles = [a for a in articles if a.url not in self.seen_urls]
         self.seen_urls.update(a.url for a in articles)
         
+        page_date_range = self._get_date_range(articles)
+        
         summary = Text()
-        summary.append(f"Found: {len(articles)} articles", style="white")
+        summary.append(f"Discovered Range ", style="white")
+        if page_date_range:
+            summary.append(f"[{page_date_range['min']} - {page_date_range['max']}]: ", style="white")
+        else:
+            summary.append(": ", style="white")
+        summary.append(f"{len(articles)}", style="white")
+        summary.append(" articles", style="white")
         if len(new_articles) != len(articles):
             summary.append(f" ({len(new_articles)} new)", style="dim")
-        summary.append(f"\nValid (in {start_dt} to {end_dt}): ", style="white")
+        
+        summary.append(f"\nTarget Range [{start_dt} - {end_dt}]: ", style="white")
         summary.append(f"{len(valid)}", style="green bold")
+        summary.append(" articles", style="white")
+        
         summary.append(f"\nNext: ", style="white")
         summary.append(self._format_action(next_action) if next_action else "None", style="cyan")
         
@@ -93,13 +106,40 @@ class AgentLogger:
             border_style="red"
         ))
     
-    def complete(self, articles: list[Article], pages: int, reason: str) -> None:
+    def complete(self, valid_articles: list[Article], all_articles: list[Article], pages: int, 
+                  start_dt: date, end_dt: date) -> None:
         """Log final summary."""
-        console.print(Panel(
-            f"[green bold]Complete[/green bold] | {len(articles)} articles from {pages} pages\n"
-            f"[dim]Stop reason: {reason}[/dim]",
-            border_style="green"
-        ))
+        all_date_range = self._get_date_range(all_articles)
+        summary = Text()
+        summary.append("Complete", style="green bold")
+        
+        summary.append(f"\nTarget Range [{start_dt} - {end_dt}]: ", style="white")
+        summary.append(f"{len(valid_articles)}", style="green bold")
+        summary.append(" articles", style="white")
+        
+        if all_date_range:
+            summary.append(f"\nDiscovered Range [{all_date_range['min']} - {all_date_range['max']}]: ", style="white")
+            summary.append(f"{all_date_range['count']}", style="white")
+            summary.append(" articles", style="white")
+        
+        console.print(Panel(summary, border_style="green"))
+    
+    def _get_date_range(self, articles: list[Article]) -> dict[str, str | int] | None:
+        """Get min-max date range from articles with valid dates."""
+        dates = []
+        for article in articles:
+            if article.publication_date:
+                try:
+                    dates.append(datetime.strptime(article.publication_date, "%Y-%m-%d").date())
+                except ValueError:
+                    continue
+        if not dates:
+            return None
+        return {
+            "min": min(dates).isoformat(),
+            "max": max(dates).isoformat(),
+            "count": len(dates)
+        }
     
     def _format_action(self, action: NavigationAction | None) -> str:
         if not action:

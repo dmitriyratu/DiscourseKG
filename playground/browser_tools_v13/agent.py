@@ -19,6 +19,7 @@ class ScrapingAgent:
         self.headless = headless
         self.logger = logger or AgentLogger()
         self.collected: list[Article] = []
+        self.all_articles: list[Article] = []
         self.seen_urls: set[str] = set()
         self.visited_actions: set[str] = set()
     
@@ -58,6 +59,9 @@ class ScrapingAgent:
                 self._mark_visited(current_url, next_action)
                 pages_processed += 1
                 
+                # Track all articles found (before filtering)
+                self.all_articles.extend(extraction.articles)
+                
                 # Filter and collect articles
                 valid = self._filter_articles(extraction.articles, start_dt, end_dt)
                 self.collected.extend(valid)
@@ -88,7 +92,7 @@ class ScrapingAgent:
                 stop_reason = "max_pages"
                 self.logger.stopping(stop_reason, len(self.collected), pages_processed)
         
-        self.logger.complete(self.collected, pages_processed, stop_reason or "unknown")
+        self.logger.complete(self.collected, self.all_articles, pages_processed, start_dt, end_dt)
         return self.collected
     
     def _parse_date(self, date_str: str) -> date:
