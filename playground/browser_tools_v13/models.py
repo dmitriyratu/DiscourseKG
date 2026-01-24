@@ -14,8 +14,8 @@ class Article(BaseModel):
 
 class NavigationAction(BaseModel):
     """Action for navigating to more content."""
-    type: Literal["scroll", "click"]
-    value: str | int  # CSS selector for click, scroll count for scroll
+    type: Literal["click"]
+    value: str  # CSS selector for click
 
 
 class PageExtraction(BaseModel):

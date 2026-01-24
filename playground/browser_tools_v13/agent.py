@@ -43,20 +43,22 @@ class ScrapingAgent:
             page_crawler = PageCrawler(crawler)
             
             for page_num in range(self.max_pages):
-                # Check if action already visited
+                # Check if click action already visited (only for click actions, not action=None)
                 if self._already_visited(current_url, next_action):
                     stop_reason = "action_already_visited"
                     break
                 
                 self.logger.page_start(current_url, page_num, next_action)
                 
-                # Observe page
-                is_scroll = next_action and next_action.type == "scroll"
+                # Always reuse session: clicks navigate via JS, infinite scroll preserves state
+                # crawl4ai should handle initial navigation automatically when session is empty
                 extraction = await self.logger.observe_with_logging(
-                    page_crawler, current_url, next_action, reuse_session=is_scroll
+                    page_crawler, current_url, next_action, reuse_session=True
                 )
                 
-                self._mark_visited(current_url, next_action)
+                # Mark click actions as visited (not action=None)
+                if next_action and next_action.type == "click":
+                    self._mark_visited(current_url, next_action)
                 pages_processed += 1
                 
                 # Track all articles found (before filtering)
@@ -74,14 +76,32 @@ class ScrapingAgent:
                     self.logger.stopping(stop_reason, len(self.collected), pages_processed)
                     break
                 
-                # Get next action
-                next_action = extraction.next_action
-                if not next_action:
-                    stop_reason = "no_navigation"
-                    self.logger.stopping(stop_reason, len(self.collected), pages_processed)
-                    break
+                # Get next action from LLM
+                llm_next_action = extraction.next_action
                 
-                # Update URL if click action (scroll stays on same page)
+                # Option B Logic: If next_action is None but target articles not found, repeat
+                if not llm_next_action:
+                    # Check if we found target articles in this extraction
+                    if valid:
+                        # Found target articles, stop
+                        stop_reason = "no_navigation"
+                        self.logger.stopping(stop_reason, len(self.collected), pages_processed)
+                        break
+                    else:
+                        # No target articles found, might be infinite scroll with more content
+                        # Check if we got any new articles (not all duplicates)
+                        if not ({a.url for a in extraction.articles} - self.seen_urls):
+                            stop_reason = "exhausted_content"
+                            self.logger.stopping(stop_reason, len(self.collected), pages_processed)
+                            break
+                        # Got new articles → repeat jump/wait/classify to load more
+                        next_action = None
+                        continue
+                
+                # If we have a click action, use it
+                next_action = llm_next_action
+                
+                # Update URL if click action
                 if next_action.type == "click" and isinstance(next_action.value, str):
                     if next_action.value.startswith("a[href="):
                         # Extract URL from selector
@@ -104,10 +124,16 @@ class ScrapingAgent:
         return f"{url}:{action.type}:{action.value}"
     
     def _already_visited(self, url: str, action: NavigationAction | None) -> bool:
+        # Only check "already visited" for click actions, not action=None
+        # We allow multiple action=None on same URL for infinite scroll
+        if not action:
+            return False
         return self._action_key(url, action) in self.visited_actions
     
     def _mark_visited(self, url: str, action: NavigationAction | None) -> None:
-        self.visited_actions.add(self._action_key(url, action))
+        # Only mark click actions as visited
+        if action and action.type == "click":
+            self.visited_actions.add(self._action_key(url, action))
     
     def _filter_articles(self, articles: list[Article], start_dt: date, end_dt: date) -> list[Article]:
         """Filter articles by date range and deduplicate."""

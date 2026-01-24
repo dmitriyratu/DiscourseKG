@@ -12,69 +12,50 @@ load_dotenv()
 SESSION_ID = "scraping_session"
 
 
+def _build_jump_wait_js() -> str:
+    """Generate JS code to jump to bottom once and wait for DOM to potentially grow."""
+    return """
+        const delay = ms => new Promise(r => setTimeout(r, ms));
+        const waitMs = 1500;
+        const pollInterval = 150;
+        const prevHeight = document.body.scrollHeight;
+        
+        // Jump to bottom once
+        window.scrollTo(0, document.body.scrollHeight);
+        
+        // Wait and poll to see if DOM grows (up to 1500ms)
+        let elapsed = 0;
+        while (elapsed < waitMs) {
+            await delay(pollInterval);
+            elapsed += pollInterval;
+            if (document.body.scrollHeight > prevHeight) break;
+        }
+        
+        // Final scroll to bottom and short delay
+        window.scrollTo(0, document.body.scrollHeight);
+        await delay(500);
+    """
+
+
 def _build_js_code(action: NavigationAction | None) -> list[str]:
     """Generate JS code for the given action."""
     if not action:
-        # Initial load: trigger infinite-scroll loads, reach pagination at bottom.
-        # Conservative pagination-first: rel="next" → higher cap, scroll to bottom; else 5 scrolls.
-        return ["""
-        (async () => {
-            const delay = ms => new Promise(r => setTimeout(r, ms));
-            const hasPagination = !!document.querySelector('link[rel="next"], a[rel="next"]');
-            const maxScrolls = hasPagination ? 12 : 5;
-            const maxNoNewContent = 2;
-            let noNewContentCount = 0;
-            let scrollCount = 0;
-
-            while (noNewContentCount < maxNoNewContent && scrollCount < maxScrolls) {
-                const prevHeight = document.body.scrollHeight;
-                window.scrollBy(0, window.innerHeight);
-                await delay(300);
-                scrollCount++;
-
-                let start = Date.now();
-                while (document.body.scrollHeight === prevHeight && Date.now() - start < 2000) {
-                    await delay(100);
-                }
-
-                if (document.body.scrollHeight === prevHeight) {
-                    noNewContentCount++;
-                } else {
-                    noNewContentCount = 0;
-                }
-
-                if (window.pageYOffset + window.innerHeight >= document.body.scrollHeight - 10
-                    && document.body.scrollHeight === prevHeight) {
-                    break;
-                }
-            }
-
-            window.scrollTo(0, document.body.scrollHeight);
-            await delay(500);
-        })();
-        """]
-    
-    if action.type == "scroll":
+        # Initial load: jump to bottom once → wait → done. No loop.
+        # Python handles repeating if target articles not found.
         return [f"""
         (async () => {{
-            const delay = ms => new Promise(r => setTimeout(r, ms));
-            for (let i = 0; i < {action.value}; i++) {{
-                const prev = document.body.scrollHeight;
-                window.scrollBy(0, window.innerHeight);
-                let start = Date.now();
-                while (document.body.scrollHeight === prev && Date.now() - start < 2000) {{
-                    await delay(100);
-                }}
-                await delay(500);
-            }}
-            window.scrollTo(0, document.body.scrollHeight);
+            {_build_jump_wait_js()}
         }})();
         """]
     
     if action.type == "click":
         selector = json.dumps(action.value)
+        # Click element, then run jump/wait/classify
         return [f"""
         (async () => {{
+            const delay = ms => new Promise(r => setTimeout(r, ms));
+            
+            // Click the element
             let el = document.querySelector({selector});
             if (!el && {selector}.includes(':contains("')) {{
                 const text = {selector}.split(':contains("')[1].split('")')[0];
@@ -83,9 +64,15 @@ def _build_js_code(action: NavigationAction | None) -> list[str]:
             }}
             if (el) {{
                 el.scrollIntoView({{behavior: 'smooth', block: 'center'}});
-                await new Promise(r => setTimeout(r, 200));
+                await delay(200);
                 el.click();
             }}
+            
+            // Wait for navigation/page update
+            await delay(1000);
+            
+            // Then run jump/wait/classify
+            {_build_jump_wait_js()}
         }})();
         """]
     
@@ -94,9 +81,8 @@ def _build_js_code(action: NavigationAction | None) -> list[str]:
 
 def _get_delay(action: NavigationAction | None) -> float:
     """Get delay before HTML extraction based on action type."""
-    if not action:
-        return 2.0
-    return 5.0 if action.type == "scroll" else 3.0
+    # Both initial load and click use 2.0 (click now includes jump/wait/classify)
+    return 2.0
 
 
 def _create_extraction_strategy() -> LLMExtractionStrategy:
