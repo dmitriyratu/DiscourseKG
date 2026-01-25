@@ -58,8 +58,11 @@ class AgentLogger:
     
     def extraction_result(self, articles: list[Article], valid: list[Article], 
                           next_action: NavigationAction | None, start_dt: date, end_dt: date,
-                          extraction_issues: list[str] | None = None) -> None:
+                          extraction_issues: list[str] | None = None,
+                          markdown_len: int | None = None) -> None:
         """Log extraction results with article summary."""
+        if len(articles) == 0 and markdown_len is not None:
+            console.print(f"[dim]Markdown captured: {markdown_len:,} chars[/dim]")
         new_articles = [a for a in articles if a.url not in self.seen_urls]
         self.seen_urls.update(a.url for a in articles)
         
@@ -119,15 +122,14 @@ class AgentLogger:
         all_date_range = self._get_date_range(all_articles)
         summary = Text()
         summary.append("Complete", style="green bold")
+
+        summary.append(f"\nDiscovered Range [{all_date_range['min']} - {all_date_range['max']}]: ", style="white")
+        summary.append(f"{all_date_range['count']}", style="white")
+        summary.append(" articles", style="white")        
         
         summary.append(f"\nTarget Range [{start_dt} - {end_dt}]: ", style="white")
         summary.append(f"{len(valid_articles)}", style="green bold")
         summary.append(" articles", style="white")
-        
-        if all_date_range:
-            summary.append(f"\nDiscovered Range [{all_date_range['min']} - {all_date_range['max']}]: ", style="white")
-            summary.append(f"{all_date_range['count']}", style="white")
-            summary.append(" articles", style="white")
         
         console.print(Panel(summary, border_style="green"))
     

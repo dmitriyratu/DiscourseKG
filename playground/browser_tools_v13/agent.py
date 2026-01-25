@@ -50,7 +50,7 @@ class ScrapingAgent:
                 self.logger.page_start(current_url, page_num, next_action)
 
                 extraction, markdown_len = await self.logger.observe_with_logging(
-                    page_crawler, current_url, next_action, reuse_session=True,
+                    page_crawler, current_url, next_action, reuse_session=(page_num > 0 or last_markdown_length > 0),
                     last_markdown_length=last_markdown_length,
                 )
                 last_markdown_length = markdown_len
@@ -61,7 +61,7 @@ class ScrapingAgent:
                 self.all_articles.extend(extraction.articles)
                 valid = self._filter_articles(extraction.articles, start_dt, end_dt)
                 self.collected.extend(valid)
-                self.logger.extraction_result(extraction.articles, valid, extraction.next_action, start_dt, end_dt, extraction.extraction_issues)
+                self.logger.extraction_result(extraction.articles, valid, extraction.next_action, start_dt, end_dt, extraction.extraction_issues, markdown_len=markdown_len)
                 if stop := self._check_stop(extraction.articles, stop_dt):
                     self._stop(stop, pages_processed)
                     break
