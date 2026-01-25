@@ -3,7 +3,7 @@ import asyncio
 from playground.browser_tools_v13.agent import ScrapingAgent
 
 async def main():
-    agent = ScrapingAgent(max_pages=10, headless=False)
+    agent = ScrapingAgent(headless=False)
     articles = await agent.run(
         url="https://rollcall.com/factbase/trump/search/",
         start_date="2026-01-06",

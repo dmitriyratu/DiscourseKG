@@ -34,20 +34,27 @@ class AgentLogger:
             size_str += f" (~{estimated_tokens:,} tokens)"
         console.print(f"[dim]LLM context: {size_str}[/dim]")
     
-    async def observe_with_logging(self, page_crawler: "PageCrawler", url: str, 
-                                   action: NavigationAction | None = None, 
-                                   reuse_session: bool = False) -> PageExtraction:
-        """Wrapper around PageCrawler.observe() that logs token usage."""
+    async def observe_with_logging(
+        self,
+        page_crawler: "PageCrawler",
+        url: str,
+        action: NavigationAction | None = None,
+        reuse_session: bool = False,
+        last_markdown_length: int = 0,
+    ) -> tuple[PageExtraction, int]:
+        """Wrapper around PageCrawler.observe() that logs token usage. Returns (extraction, markdown_len)."""
         def log_result(result, extraction_strategy):
-            total_usage = getattr(extraction_strategy, 'total_usage', None)
+            total_usage = getattr(extraction_strategy, "total_usage", None)
             if total_usage:
-                input_tokens = getattr(total_usage, 'prompt_tokens', 0)
-                output_tokens = getattr(total_usage, 'completion_tokens', 0)
-                total = getattr(total_usage, 'total_tokens', input_tokens + output_tokens)
+                input_tokens = getattr(total_usage, "prompt_tokens", 0)
+                output_tokens = getattr(total_usage, "completion_tokens", 0)
+                total = getattr(total_usage, "total_tokens", input_tokens + output_tokens)
                 if total > 0:
                     console.print(f"[dim]LLM context: {input_tokens:,} in + {output_tokens:,} out = {total:,} tokens[/dim]")
-        
-        return await page_crawler.observe(url, action, reuse_session, result_callback=log_result)
+
+        return await page_crawler.observe(
+            url, action, reuse_session, result_callback=log_result, last_markdown_length=last_markdown_length
+        )
     
     def extraction_result(self, articles: list[Article], valid: list[Article], 
                           next_action: NavigationAction | None, start_dt: date, end_dt: date,

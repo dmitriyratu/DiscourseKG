@@ -35,3 +35,8 @@ For "extraction_issues", list any problems encountered (e.g., ["dates unclear fo
 
 IMPORTANT: Process the ENTIRE document.
 """
+
+EXTRACTION_PROMPT_DELTA_SUFFIX = (
+    "\n\nThe content above is only the NEW portion of an infinitely-scrolled page "
+    "(previous content omitted). Extract articles from it."
+)

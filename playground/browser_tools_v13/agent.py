@@ -13,9 +13,9 @@ if sys.platform == 'win32':
 
 class ScrapingAgent:
     """Autonomous agent that navigates pages to collect articles within a date range."""
-    
-    def __init__(self, max_pages: int = 10, headless: bool = False, logger: AgentLogger | None = None):
-        self.max_pages = max_pages
+    MAX_PAGES = 10
+
+    def __init__(self, headless: bool = False, logger: AgentLogger | None = None):
         self.headless = headless
         self.logger = logger or AgentLogger()
         self.collected: list[Article] = []
@@ -34,83 +34,54 @@ class ScrapingAgent:
             extra_args=["--disable-gpu", "--no-sandbox", "--disable-dev-shm-usage"]
         )
         
-        stop_reason = None
         pages_processed = 0
         current_url = url
         next_action: NavigationAction | None = None
-        
+        last_markdown_length = 0
+
         async with AsyncWebCrawler(config=browser_config) as crawler:
             page_crawler = PageCrawler(crawler)
-            
-            for page_num in range(self.max_pages):
-                # Check if click action already visited (only for click actions, not action=None)
+
+            for page_num in range(self.MAX_PAGES):
                 if self._already_visited(current_url, next_action):
-                    stop_reason = "action_already_visited"
+                    self._stop("action_already_visited", pages_processed)
                     break
-                
+
                 self.logger.page_start(current_url, page_num, next_action)
-                
-                # Always reuse session: clicks navigate via JS, infinite scroll preserves state
-                # crawl4ai should handle initial navigation automatically when session is empty
-                extraction = await self.logger.observe_with_logging(
-                    page_crawler, current_url, next_action, reuse_session=True
+
+                extraction, markdown_len = await self.logger.observe_with_logging(
+                    page_crawler, current_url, next_action, reuse_session=True,
+                    last_markdown_length=last_markdown_length,
                 )
-                
-                # Mark click actions as visited (not action=None)
+                last_markdown_length = markdown_len
+
                 if next_action and next_action.type == "click":
                     self._mark_visited(current_url, next_action)
                 pages_processed += 1
-                
-                # Track all articles found (before filtering)
                 self.all_articles.extend(extraction.articles)
-                
-                # Filter and collect articles
                 valid = self._filter_articles(extraction.articles, start_dt, end_dt)
                 self.collected.extend(valid)
-                
                 self.logger.extraction_result(extraction.articles, valid, extraction.next_action, start_dt, end_dt, extraction.extraction_issues)
-                
-                # Check stop conditions
                 if stop := self._check_stop(extraction.articles, stop_dt):
-                    stop_reason = stop
-                    self.logger.stopping(stop_reason, len(self.collected), pages_processed)
+                    self._stop(stop, pages_processed)
                     break
-                
-                # Get next action from LLM
                 llm_next_action = extraction.next_action
-                
-                # Option B Logic: If next_action is None but target articles not found, repeat
                 if not llm_next_action:
-                    # Check if we found target articles in this extraction
                     if valid:
-                        # Found target articles, stop
-                        stop_reason = "no_navigation"
-                        self.logger.stopping(stop_reason, len(self.collected), pages_processed)
+                        self._stop("no_navigation", pages_processed)
                         break
-                    else:
-                        # No target articles found, might be infinite scroll with more content
-                        # Check if we got any new articles (not all duplicates)
-                        if not ({a.url for a in extraction.articles} - self.seen_urls):
-                            stop_reason = "exhausted_content"
-                            self.logger.stopping(stop_reason, len(self.collected), pages_processed)
-                            break
-                        # Got new articles → repeat jump/wait/classify to load more
-                        next_action = None
-                        continue
-                
-                # If we have a click action, use it
+                    new_urls = {a.url for a in extraction.articles} - self.seen_urls
+                    if not new_urls:
+                        self._stop("exhausted_content", pages_processed)
+                        break
+                    next_action = None
+                    continue
                 next_action = llm_next_action
-                
-                # Update URL if click action
                 if next_action.type == "click" and isinstance(next_action.value, str):
-                    if next_action.value.startswith("a[href="):
-                        # Extract URL from selector
-                        href = next_action.value.split("href='")[1].split("']")[0] if "href='" in next_action.value else None
-                        if href:
-                            current_url = href
+                    if href := self._href_from_selector(next_action.value):
+                        current_url = href
             else:
-                stop_reason = "max_pages"
-                self.logger.stopping(stop_reason, len(self.collected), pages_processed)
+                self._stop("max_pages", pages_processed)
         
         self.logger.complete(self.collected, self.all_articles, pages_processed, start_dt, end_dt)
         return self.collected
@@ -124,17 +95,25 @@ class ScrapingAgent:
         return f"{url}:{action.type}:{action.value}"
     
     def _already_visited(self, url: str, action: NavigationAction | None) -> bool:
-        # Only check "already visited" for click actions, not action=None
-        # We allow multiple action=None on same URL for infinite scroll
         if not action:
             return False
         return self._action_key(url, action) in self.visited_actions
     
     def _mark_visited(self, url: str, action: NavigationAction | None) -> None:
-        # Only mark click actions as visited
         if action and action.type == "click":
             self.visited_actions.add(self._action_key(url, action))
-    
+
+    def _stop(self, reason: str, pages_processed: int) -> None:
+        self.logger.stopping(reason, len(self.collected), pages_processed)
+
+    def _href_from_selector(self, selector: str) -> str | None:
+        if not selector.startswith("a[href='") or "']" not in selector:
+            return None
+        try:
+            return selector.split("href='")[1].split("']")[0]
+        except IndexError:
+            return None
+
     def _filter_articles(self, articles: list[Article], start_dt: date, end_dt: date) -> list[Article]:
         """Filter articles by date range and deduplicate."""
         valid = []
