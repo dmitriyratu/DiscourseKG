@@ -6,6 +6,7 @@ from crawl4ai import AsyncWebCrawler, BrowserConfig
 from playground.browser_tools_v13.models import Article, NavigationAction, PageExtraction
 from playground.browser_tools_v13.crawler import PageCrawler
 from playground.browser_tools_v13.logger import AgentLogger
+from playground.browser_tools_v13.date_utils import DateVoter
 
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -36,8 +37,7 @@ class ScrapingAgent:
         
         pages_processed = 0
         current_url = url
-        next_action: NavigationAction | None = None
-        last_markdown_length = 0
+        next_action: NavigationAction | None = NavigationAction(type="scroll")
 
         async with AsyncWebCrawler(config=browser_config) as crawler:
             page_crawler = PageCrawler(crawler)
@@ -47,13 +47,12 @@ class ScrapingAgent:
                     self._stop("action_already_visited", pages_processed)
                     break
 
+                reuse = page_num > 0
                 self.logger.page_start(current_url, page_num, next_action)
 
-                extraction, markdown_len = await self.logger.observe_with_logging(
-                    page_crawler, current_url, next_action, reuse_session=(page_num > 0 or last_markdown_length > 0),
-                    last_markdown_length=last_markdown_length,
+                extraction, markdown_len, llm_info = await self.logger.observe_with_logging(
+                    page_crawler, current_url, next_action, reuse_session=reuse,
                 )
-                last_markdown_length = markdown_len
 
                 if next_action and next_action.type == "click":
                     self._mark_visited(current_url, next_action)
@@ -61,7 +60,7 @@ class ScrapingAgent:
                 self.all_articles.extend(extraction.articles)
                 valid = self._filter_articles(extraction.articles, start_dt, end_dt)
                 self.collected.extend(valid)
-                self.logger.extraction_result(extraction.articles, valid, extraction.next_action, start_dt, end_dt, extraction.extraction_issues, markdown_len=markdown_len)
+                self.logger.extraction_result(extraction.articles, valid, extraction.next_action, start_dt, end_dt, extraction.extraction_issues, llm_info=llm_info)
                 if stop := self._check_stop(extraction.articles, stop_dt):
                     self._stop(stop, pages_processed)
                     break
@@ -74,7 +73,7 @@ class ScrapingAgent:
                     if not new_urls:
                         self._stop("exhausted_content", pages_processed)
                         break
-                    next_action = None
+                    next_action = NavigationAction(type="scroll")
                     continue
                 next_action = llm_next_action
                 if next_action.type == "click" and isinstance(next_action.value, str):
@@ -89,18 +88,14 @@ class ScrapingAgent:
     def _parse_date(self, date_str: str) -> date:
         return datetime.strptime(date_str, "%Y-%m-%d").date()
     
-    def _action_key(self, url: str, action: NavigationAction | None) -> str:
-        if not action:
-            return url
+    def _action_key(self, url: str, action: NavigationAction) -> str:
         return f"{url}:{action.type}:{action.value}"
     
-    def _already_visited(self, url: str, action: NavigationAction | None) -> bool:
-        if not action:
-            return False
+    def _already_visited(self, url: str, action: NavigationAction) -> bool:
         return self._action_key(url, action) in self.visited_actions
     
-    def _mark_visited(self, url: str, action: NavigationAction | None) -> None:
-        if action and action.type == "click":
+    def _mark_visited(self, url: str, action: NavigationAction) -> None:
+        if action.type == "click":
             self.visited_actions.add(self._action_key(url, action))
 
     def _stop(self, reason: str, pages_processed: int) -> None:
@@ -120,7 +115,7 @@ class ScrapingAgent:
         for article in articles:
             if article.url in self.seen_urls:
                 continue
-            if article.date_confidence not in ("HIGH", "MEDIUM"):
+            if article.date_score is None or article.date_score < DateVoter.THRESHOLD:
                 continue
             if not article.publication_date:
                 continue
@@ -139,7 +134,7 @@ class ScrapingAgent:
         # Date threshold: oldest reliable article is before stop date
         reliable_dates = []
         for a in articles:
-            if a.date_confidence not in ("HIGH", "MEDIUM") or not a.publication_date:
+            if a.date_score is None or a.date_score < DateVoter.THRESHOLD or not a.publication_date:
                 continue
             try:
                 reliable_dates.append(self._parse_date(a.publication_date))

@@ -6,6 +6,7 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.table import Table
 from playground.browser_tools_v13.models import Article, NavigationAction, PageExtraction
+from playground.browser_tools_v13.date_utils import DateVoter
 
 if TYPE_CHECKING:
     from playground.browser_tools_v13.crawler import PageCrawler
@@ -23,16 +24,9 @@ class AgentLogger:
         """Log page processing start."""
         action_str = self._format_action(action)
         console.print(Panel(
-            f"[bold]Page {page_num + 1}[/bold] | {url[:80]}...\n[cyan]{action_str}[/cyan]",
+            f"[bold]Step {page_num + 1}[/bold] | {url[:80]}...\n[cyan]{action_str}[/cyan]",
             border_style="blue"
         ))
-    
-    def _log_llm_context(self, content_size: int, estimated_tokens: int | None = None) -> None:
-        """Log LLM context size being sent."""
-        size_str = f"{content_size:,} chars"
-        if estimated_tokens:
-            size_str += f" (~{estimated_tokens:,} tokens)"
-        console.print(f"[dim]LLM context: {size_str}[/dim]")
     
     async def observe_with_logging(
         self,
@@ -40,29 +34,33 @@ class AgentLogger:
         url: str,
         action: NavigationAction | None = None,
         reuse_session: bool = False,
-        last_markdown_length: int = 0,
-    ) -> tuple[PageExtraction, int]:
-        """Wrapper around PageCrawler.observe() that logs token usage. Returns (extraction, markdown_len)."""
-        def log_result(result, extraction_strategy):
+    ) -> tuple[PageExtraction, int, dict[str, int | float] | None]:
+        """Wrapper around PageCrawler.observe() that captures token usage. Returns (extraction, markdown_len, llm_info)."""
+        llm_info: dict[str, int | float] | None = None
+        
+        def log_result(result, extraction_strategy, llm_time: float):
+            nonlocal llm_info
             total_usage = getattr(extraction_strategy, "total_usage", None)
             if total_usage:
                 input_tokens = getattr(total_usage, "prompt_tokens", 0)
                 output_tokens = getattr(total_usage, "completion_tokens", 0)
                 total = getattr(total_usage, "total_tokens", input_tokens + output_tokens)
                 if total > 0:
-                    console.print(f"[dim]LLM context: {input_tokens:,} in + {output_tokens:,} out = {total:,} tokens[/dim]")
+                    llm_info = {
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                        "total_tokens": total,
+                        "llm_time": llm_time
+                    }
 
-        return await page_crawler.observe(
-            url, action, reuse_session, result_callback=log_result, last_markdown_length=last_markdown_length
-        )
+        extraction, markdown_len = await page_crawler.observe(url, action, reuse_session, result_callback=log_result)
+        return extraction, markdown_len, llm_info
     
     def extraction_result(self, articles: list[Article], valid: list[Article], 
                           next_action: NavigationAction | None, start_dt: date, end_dt: date,
                           extraction_issues: list[str] | None = None,
-                          markdown_len: int | None = None) -> None:
+                          llm_info: dict[str, int | float] | None = None) -> None:
         """Log extraction results with article summary."""
-        if len(articles) == 0 and markdown_len is not None:
-            console.print(f"[dim]Markdown captured: {markdown_len:,} chars[/dim]")
         new_articles = [a for a in articles if a.url not in self.seen_urls]
         self.seen_urls.update(a.url for a in articles)
         
@@ -83,25 +81,36 @@ class AgentLogger:
         summary.append(f"{len(valid)}", style="green bold")
         summary.append(" articles", style="white")
         
-        summary.append(f"\nNext: ", style="white")
-        summary.append(self._format_action(next_action) if next_action else "None", style="cyan")
+        if next_action:
+            summary.append(f"\nNext: ", style="white")
+            summary.append(self._format_action(next_action, False), style="cyan")
         
         if extraction_issues:
-            summary.append(f"\n[red]Issues:[/red] {', '.join(extraction_issues)}", style="red")
+            summary.append(f"\nIssues: {', '.join(extraction_issues)}", style="red")
         
-        console.print(Panel(summary, border_style="white"))
+        if llm_info:
+            summary.append(f"\nLLM: {llm_info['input_tokens']:,} in + {llm_info['output_tokens']:,} out = {llm_info['total_tokens']:,} tokens | ⏱: {llm_info['llm_time']:.2f}s", style="dim")
+        
+        console.print(Panel(summary, title="Results", title_align="left", border_style="white"))
         
         if valid:
             table = Table(show_header=True, header_style="bold", border_style="dim")
             table.add_column("#", width=3)
             table.add_column("Title", width=45)
             table.add_column("Date", width=12)
-            table.add_column("Conf", width=6)
+            table.add_column("Score", width=6)
             
             for i, a in enumerate(valid[:5], 1):
-                conf_style = {"HIGH": "green", "MEDIUM": "yellow"}.get(a.date_confidence, "red")
-                table.add_row(str(i), a.title[:45], a.publication_date or "N/A", 
-                              Text(a.date_confidence, style=conf_style))
+                if a.date_score is None:
+                    score_text = Text("N/A", style="red")
+                else:
+                    score_style = (
+                        "green" if a.date_score >= 7 else
+                        "yellow" if a.date_score >= DateVoter.THRESHOLD else
+                        "red"
+                    )
+                    score_text = Text(str(a.date_score), style=score_style)
+                table.add_row(str(i), a.title[:45], a.publication_date or "N/A", score_text)
             
             if len(valid) > 5:
                 table.add_row("...", f"({len(valid) - 5} more)", "", "")
@@ -123,9 +132,14 @@ class AgentLogger:
         summary = Text()
         summary.append("Complete", style="green bold")
 
-        summary.append(f"\nDiscovered Range [{all_date_range['min']} - {all_date_range['max']}]: ", style="white")
-        summary.append(f"{all_date_range['count']}", style="white")
-        summary.append(" articles", style="white")        
+        if all_date_range:
+            summary.append(f"\nDiscovered Range [{all_date_range['min']} - {all_date_range['max']}]: ", style="white")
+            summary.append(f"{all_date_range['count']}", style="white")
+            summary.append(" articles", style="white")
+        else:
+            summary.append("\nDiscovered Range: ", style="white")
+            summary.append("0", style="white")
+            summary.append(" articles", style="white")        
         
         summary.append(f"\nTarget Range [{start_dt} - {end_dt}]: ", style="white")
         summary.append(f"{len(valid_articles)}", style="green bold")
@@ -152,7 +166,7 @@ class AgentLogger:
     
     def _format_action(self, action: NavigationAction | None) -> str:
         if not action:
-            return "Initial load"
+            return "None"
         if action.type == "scroll":
-            return f"Scroll {action.value}x"
+            return "Scroll to bottom"
         return f"Click: {str(action.value)[:60]}"

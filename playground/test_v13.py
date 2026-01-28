@@ -6,10 +6,9 @@ async def main():
     agent = ScrapingAgent(headless=False)
     articles = await agent.run(
         url="https://rollcall.com/factbase/trump/search/",
-        start_date="2026-01-06",
-        end_date="2026-01-10",
+        start_date="2025-11-06",
+        end_date="2025-11-10",
     )
-    print(f"\nCollected {len(articles)} articles")
 
 if __name__ == "__main__":
     asyncio.run(main())
