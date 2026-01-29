@@ -6,7 +6,7 @@ from crawl4ai import AsyncWebCrawler, BrowserConfig
 from playground.browser_tools_v13.models import Article, NavigationAction, PageExtraction
 from playground.browser_tools_v13.crawler import PageCrawler
 from playground.browser_tools_v13.logger import AgentLogger
-from playground.browser_tools_v13.date_utils import DateVoter
+from playground.browser_tools_v13.date_voter import DateVoter
 
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -57,11 +57,12 @@ class ScrapingAgent:
                 if next_action and next_action.type == "click":
                     self._mark_visited(current_url, next_action)
                 pages_processed += 1
-                self.all_articles.extend(extraction.articles)
-                valid = self._filter_articles(extraction.articles, start_dt, end_dt)
+                batch_articles, dropped = DateVoter.inlier_articles(extraction.articles)
+                self.all_articles.extend(batch_articles)
+                valid = self._filter_articles(batch_articles, start_dt, end_dt)
                 self.collected.extend(valid)
-                self.logger.extraction_result(extraction.articles, valid, extraction.next_action, start_dt, end_dt, extraction.extraction_issues, llm_info=llm_info)
-                if stop := self._check_stop(extraction.articles, stop_dt):
+                self.logger.extraction_result(batch_articles, valid, extraction.next_action, start_dt, end_dt, extraction.extraction_issues, dropped=dropped, llm_info=llm_info)
+                if stop := self._check_stop(batch_articles, stop_dt):
                     self._stop(stop, pages_processed)
                     break
                 llm_next_action = extraction.next_action
@@ -69,7 +70,7 @@ class ScrapingAgent:
                     if valid:
                         self._stop("no_navigation", pages_processed)
                         break
-                    new_urls = {a.url for a in extraction.articles} - self.seen_urls
+                    new_urls = {a.url for a in batch_articles} - self.seen_urls
                     if not new_urls:
                         self._stop("exhausted_content", pages_processed)
                         break

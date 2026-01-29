@@ -1,41 +1,38 @@
 """LLM extraction prompt for article scraping."""
+from playground.browser_tools_v13.models import DateSource
 
-EXTRACTION_PROMPT = """
-Extract all articles with publication dates from this page. Scan the ENTIRE document systematically.
 
-Return a JSON object with this structure:
-{
-  "articles": [...list of article objects...],
-  "next_action": {...action object or null...},
-  "extraction_issues": [...list of issues encountered...]
-}
+def build_extraction_prompt(delta_mode: bool = False) -> str:
+    """Build extraction instruction; date source data from DateSource.for_prompt()."""
+    enum_values, source_bullets = DateSource.for_prompt()
+    date_sources = (
+        f"source (exactly one of: {enum_values}).\n\n"
+        f"Date sources — use one candidate per source that applies; do not merge:\n{source_bullets}"
+    )
+    prompt = f"""
+Extract all articles from this page. Return JSON:
+{{"articles": [...], "next_action": {{... or null}}, "extraction_issues": [...]}}
 
-For each article in the "articles" array:
-- title: Article headline
-- url: Full URL to the article
-- date_candidates: Array of date candidates found for this article. Each candidate has:
-  - date: YYYY-MM-DD format only (e.g., 2025-01-15)
-  - source: One of: datetime_attr, schema_org, url_path, near_title, metadata
+Each article: title (headline), url (full URL), date_candidates (array).
+Each date_candidate: date (YYYY-MM-DD only), {date_sources}
 
-IMPORTANT: Extract ALL date candidates you find for each article from different sources. Do not pick just one - collect all available dates from:
-1. <time datetime> attributes (source: datetime_attr)
-2. schema.org datePublished (source: schema_org)
-3. URL path dates like /2025/01/15/ (source: url_path)
-4. "Published on..." text near titles (source: near_title)
-5. Other metadata (source: metadata)
+Rule: If both the URL and the title (or adjacent line) contain a date for the same article, output two candidates — one with source "url_path", one with source "near_title". Same date, two entries.
 
-For "next_action" field, return one of:
-- {"type": "click", "value": "a[href='...']"} for pagination/next page links
-- {"type": "scroll"} to scroll down and load more content (for infinite scroll pages)
-- null if no more content available or this is the last page
+Example (one article, two sources):
+"date_candidates": [
+  {{"date": "2026-01-28", "source": "url_path"}},
+  {{"date": "2026-01-28", "source": "near_title"}}
+]
 
-Pagination hints: Look for rel="next", aria-label with "next", "Load More", "Show More" buttons.
-Prefer href-based selectors: a[href="full-url-here"]
+next_action: {{"type": "click", "value": "a[href='...']"}} for pagination; {{"type": "scroll"}} for load-more; null if done.
+Prefer href selectors: a[href="full-url"]. extraction_issues: list any problems.
 
-For "extraction_issues", list any problems encountered (e.g., ["dates unclear for 3 articles"]).
-
-IMPORTANT: Process the ENTIRE document.
+Process the ENTIRE document.
 """
+    if delta_mode:
+        prompt += EXTRACTION_PROMPT_DELTA_SUFFIX
+    return prompt.strip()
+
 
 EXTRACTION_PROMPT_DELTA_SUFFIX = (
     "\n\nThe content above is only the NEW portion of an infinitely-scrolled page "

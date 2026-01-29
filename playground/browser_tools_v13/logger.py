@@ -6,7 +6,6 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.table import Table
 from playground.browser_tools_v13.models import Article, NavigationAction, PageExtraction
-from playground.browser_tools_v13.date_utils import DateVoter
 
 if TYPE_CHECKING:
     from playground.browser_tools_v13.crawler import PageCrawler
@@ -56,16 +55,17 @@ class AgentLogger:
         extraction, markdown_len = await page_crawler.observe(url, action, reuse_session, result_callback=log_result)
         return extraction, markdown_len, llm_info
     
-    def extraction_result(self, articles: list[Article], valid: list[Article], 
+    def extraction_result(self, articles: list[Article], valid: list[Article],
                           next_action: NavigationAction | None, start_dt: date, end_dt: date,
                           extraction_issues: list[str] | None = None,
+                          dropped: list[Article] | None = None,
                           llm_info: dict[str, int | float] | None = None) -> None:
         """Log extraction results with article summary."""
         new_articles = [a for a in articles if a.url not in self.seen_urls]
         self.seen_urls.update(a.url for a in articles)
-        
+
         page_date_range = self._get_date_range(articles)
-        
+
         summary = Text()
         summary.append(f"Discovered Range ", style="white")
         if page_date_range:
@@ -76,23 +76,38 @@ class AgentLogger:
         summary.append(" articles", style="white")
         if len(new_articles) != len(articles):
             summary.append(f" ({len(new_articles)} new)", style="dim")
-        
+
         summary.append(f"\nTarget Range [{start_dt} - {end_dt}]: ", style="white")
         summary.append(f"{len(valid)}", style="green bold")
         summary.append(" articles", style="white")
-        
+
+        if dropped:
+            summary.append(f"\nDropped ", style="yellow")
+            summary.append(f"{len(dropped)}", style="yellow bold")
+            summary.append(" date outlier(s)", style="yellow")
+
         if next_action:
             summary.append(f"\nNext: ", style="white")
             summary.append(self._format_action(next_action, False), style="cyan")
-        
+
         if extraction_issues:
             summary.append(f"\nIssues: {', '.join(extraction_issues)}", style="red")
-        
+
         if llm_info:
             summary.append(f"\nLLM: {llm_info['input_tokens']:,} in + {llm_info['output_tokens']:,} out = {llm_info['total_tokens']:,} tokens | ⏱: {llm_info['llm_time']:.2f}s", style="dim")
-        
+
         console.print(Panel(summary, title="Results", title_align="left", border_style="white"))
-        
+
+        if dropped:
+            drop_table = Table(show_header=True, header_style="bold yellow", border_style="yellow", title="Dropped Articles", title_align="left")
+            drop_table.add_column("Title", width=50)
+            drop_table.add_column("Date", width=12)
+            for a in dropped[:5]:
+                drop_table.add_row(a.title[:50], a.publication_date or "N/A")
+            if len(dropped) > 5:
+                drop_table.add_row("...", f"({len(dropped) - 5} more)")
+            console.print(drop_table)
+
         if valid:
             table = Table(show_header=True, header_style="bold", border_style="dim")
             table.add_column("#", width=3)
@@ -104,11 +119,7 @@ class AgentLogger:
                 if a.date_score is None:
                     score_text = Text("N/A", style="red")
                 else:
-                    score_style = (
-                        "green" if a.date_score >= 7 else
-                        "yellow" if a.date_score >= DateVoter.THRESHOLD else
-                        "red"
-                    )
+                    score_style = "red" if a.date_score <= 1 else "yellow" if a.date_score <= 5 else "green"
                     score_text = Text(str(a.date_score), style=score_style)
                 table.add_row(str(i), a.title[:45], a.publication_date or "N/A", score_text)
             

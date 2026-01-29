@@ -9,8 +9,8 @@ from dotenv import load_dotenv
 from crawl4ai import AsyncWebCrawler, CrawlerRunConfig, CacheMode, LLMExtractionStrategy, LLMConfig
 
 from playground.browser_tools_v13.models import PageExtraction, NavigationAction, Article, ArticleExtraction, DateVoteResult
-from playground.browser_tools_v13.prompts import EXTRACTION_PROMPT, EXTRACTION_PROMPT_DELTA_SUFFIX
-from playground.browser_tools_v13.date_utils import DateVoter
+from playground.browser_tools_v13.prompts import build_extraction_prompt
+from playground.browser_tools_v13.date_voter import DateVoter
 from src.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -180,7 +180,7 @@ def _crawler_config(
 def _create_extraction_strategy(delta_mode: bool = False) -> LLMExtractionStrategy:
     """Create LLM extraction strategy."""
     schema = PageExtraction.model_json_schema()
-    instruction = EXTRACTION_PROMPT + EXTRACTION_PROMPT_DELTA_SUFFIX if delta_mode else EXTRACTION_PROMPT
+    instruction = build_extraction_prompt(delta_mode)
     return LLMExtractionStrategy(
         llm_config=LLMConfig(
             provider="openai/gpt-4o-mini",

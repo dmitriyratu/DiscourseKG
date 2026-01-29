@@ -1,14 +1,43 @@
 """Pydantic models for article extraction and navigation."""
-from typing import Literal, Optional, Union
+from enum import Enum
+from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
-DateSource = Literal["datetime_attr", "schema_org", "url_path", "near_title", "metadata"]
+
+class DateSource(str, Enum):
+    """Date source: .value is the name (for JSON/Pydantic), .description and .weight attached."""
+    def __new__(cls, name: str, description: str = "", weight: int = 0):
+        obj = str.__new__(cls, name)
+        obj._value_ = name
+        obj.description = description
+        obj.weight = weight
+        return obj
+
+    datetime_attr = ("datetime_attr", "<time datetime=\"...\">", 7)
+    schema_org = ("schema_org", "schema.org datePublished", 5)
+    url_path = ("url_path", "date segment in the URL path (e.g. .../january-28-2026/, .../2026/01/28/)", 3)
+    near_title = ("near_title", "date in the article title or on the line immediately above/below the title", 2)
+    metadata = ("metadata", "other page metadata", 1)
+
+    @classmethod
+    def weight_for(cls, name: str) -> int:
+        try:
+            return cls(name).weight
+        except ValueError:
+            return 0
+
+    @classmethod
+    def for_prompt(cls) -> tuple[str, str]:
+        """(enum_values, bullet_list) for use in prompt assembly."""
+        enum = ", ".join(s.value for s in cls)
+        bullets = "\n".join(f"- {s.value}: {s.description}" for s in cls)
+        return enum, bullets
 
 
 class DateCandidate(BaseModel):
     """Date candidate extracted from a specific source."""
-    date: str  # YYYY-MM-DD
-    source: DateSource
+    date: str = Field(..., description="Date in YYYY-MM-DD format")
+    source: DateSource = Field(..., description="Source of the date candidate")
 
 
 class DateVoteResult(BaseModel):
