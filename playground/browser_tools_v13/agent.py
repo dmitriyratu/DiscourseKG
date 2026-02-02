@@ -15,6 +15,7 @@ if sys.platform == 'win32':
 class ScrapingAgent:
     """Autonomous agent that navigates pages to collect articles within a date range."""
     MAX_PAGES = 10
+    ZERO_BATCH_THRESHOLD = 2
 
     def __init__(self, headless: bool = False, logger: AgentLogger | None = None):
         self.headless = headless
@@ -38,6 +39,7 @@ class ScrapingAgent:
         pages_processed = 0
         current_url = url
         next_action: NavigationAction | None = NavigationAction(type="scroll")
+        consecutive_zero = 0
 
         async with AsyncWebCrawler(config=browser_config) as crawler:
             page_crawler = PageCrawler(crawler)
@@ -71,15 +73,20 @@ class ScrapingAgent:
                         self._stop("no_navigation", pages_processed)
                         break
                     new_urls = {a.url for a in batch_articles} - self.seen_urls
-                    if not new_urls:
-                        self._stop("exhausted_content", pages_processed)
-                        break
+                    if new_urls:
+                        consecutive_zero = 0
+                    else:
+                        consecutive_zero += 1
+                        if consecutive_zero >= self.ZERO_BATCH_THRESHOLD:
+                            self._stop("exhausted_content", pages_processed)
+                            break
                     next_action = NavigationAction(type="scroll")
                     continue
                 next_action = llm_next_action
                 if next_action.type == "click" and isinstance(next_action.value, str):
                     if href := self._href_from_selector(next_action.value):
                         current_url = href
+                        consecutive_zero = 0
             else:
                 self._stop("max_pages", pages_processed)
         

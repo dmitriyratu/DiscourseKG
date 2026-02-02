@@ -88,7 +88,7 @@ class AgentLogger:
 
         if next_action:
             summary.append(f"\nNext: ", style="white")
-            summary.append(self._format_action(next_action, False), style="cyan")
+            summary.append(self._format_action(next_action), style="cyan")
 
         if extraction_issues:
             summary.append(f"\nIssues: {', '.join(extraction_issues)}", style="red")
@@ -99,7 +99,7 @@ class AgentLogger:
         console.print(Panel(summary, title="Results", title_align="left", border_style="white"))
 
         if dropped:
-            drop_table = Table(show_header=True, header_style="bold yellow", border_style="yellow", title="Dropped Articles", title_align="left")
+            drop_table = Table(show_header=True, header_style="bold yellow", border_style="yellow", title="Dropped Articles", title_justify="left")
             drop_table.add_column("Title", width=50)
             drop_table.add_column("Date", width=12)
             for a in dropped[:5]:

@@ -18,6 +18,8 @@ logger = get_logger(__name__)
 load_dotenv()
 
 SESSION_ID = "scraping_session"
+SCROLL_WAIT_MS = 4000
+SCROLL_POLL_MS = 150
 
 
 def _diff_added_only(old: str, new: str) -> str:
@@ -27,46 +29,10 @@ def _diff_added_only(old: str, new: str) -> str:
     return "".join(line[2:] for line in result if line.startswith("+ "))
 
 
-def _build_popup_removal_js() -> str:
-    """Generate JS code to remove/close pop-ups and modals."""
-    return """
-        (() => {
-            const removeVisible = (sel) => {
-                try {
-                    document.querySelectorAll(sel).forEach(el => {
-                        if (el.offsetParent !== null) el.remove();
-                    });
-                } catch (e) {}
-            };
-            const clickVisible = (sel) => {
-                try {
-                    document.querySelectorAll(sel).forEach(btn => {
-                        if (btn.offsetParent !== null) btn.click();
-                    });
-                } catch (e) {}
-            };
-            
-            [
-                '[role="dialog"]', '.modal', '.popup', '.overlay', '#overlay',
-                '[data-dialog]', '.lightbox', '.cookie-banner', '.consent-banner',
-                '[id*="popup"]', '[class*="popup"]', '[id*="modal"]', '[class*="modal"]',
-                '.backdrop', '[class*="overlay"]', '[class*="dialog"]'
-            ].forEach(removeVisible);
-            
-            [
-                '[aria-label*="close" i]', '[class*="close" i]', '[id*="close" i]',
-                '[data-dismiss]', '[data-close]', '[aria-label*="dismiss" i]', '[aria-label*="accept" i]'
-            ].forEach(clickVisible);
-        })();
-    """
-
-
 def _build_jump_wait_js() -> str:
     """Generate JS code to scroll progressively to target and wait for DOM to potentially grow."""
-    popup_removal = _build_popup_removal_js()
     return f"""
         const delay = ms => new Promise(r => setTimeout(r, ms));
-        {popup_removal}
         await delay(100);
         
         const target = document.body.scrollHeight;
@@ -78,48 +44,40 @@ def _build_jump_wait_js() -> str:
             current = Math.min(current + viewport * 0.8, target);
             window.scrollTo(0, current);
             await delay(300);
-            {popup_removal}
         }}
         
-        // Wait for potential growth (up to 1500ms)
+        // Wait for potential growth (up to SCROLL_WAIT_MS)
         const prevHeight = document.body.scrollHeight;
         let elapsed = 0;
-        while (elapsed < 1500) {{
-            await delay(150);
-            elapsed += 150;
-            {popup_removal}
+        while (elapsed < {SCROLL_WAIT_MS}) {{
+            await delay({SCROLL_POLL_MS});
+            elapsed += {SCROLL_POLL_MS};
             if (document.body.scrollHeight > prevHeight) break;
         }}
         
-        // Final scroll to target and short delay
-        window.scrollTo(0, target);
+        // Final scroll to current bottom (may have grown) and short delay
+        window.scrollTo(0, document.body.scrollHeight);
         await delay(500);
-        {popup_removal}
     """
 
 
 def _build_js_code(action: NavigationAction | None) -> list[str]:
     """Generate JS code for the given action."""
-    popup_removal = _build_popup_removal_js()
-    
     if action and action.type == "scroll":
         # Explicit scroll: scroll progressively to target → wait → done.
         return [f"""
         (async () => {{
-            {popup_removal}
             await new Promise(r => setTimeout(r, 100));
             {_build_jump_wait_js()}
         }})();
         """]
     
-    if action.type == "click":
+    if action and action.type == "click":
         selector = json.dumps(action.value)
         # Click element, then run jump/wait/classify
         return [f"""
         (async () => {{
             const delay = ms => new Promise(r => setTimeout(r, ms));
-            
-            {popup_removal}
             await delay(100);
             
             // Click the element
@@ -132,15 +90,11 @@ def _build_js_code(action: NavigationAction | None) -> list[str]:
             if (el) {{
                 el.scrollIntoView({{behavior: 'smooth', block: 'center'}});
                 await delay(200);
-                {popup_removal}
                 el.click();
             }}
             
             // Wait for navigation/page update
             await delay(1000);
-            {popup_removal}
-            
-            // Then run jump/wait/classify
             {_build_jump_wait_js()}
         }})();
         """]
@@ -161,7 +115,7 @@ def _crawler_config(
         'wait_for_timeout': 10000,
         'remove_overlay_elements': True,
         'magic': True,
-        'word_count_threshold': 100,
+        'word_count_threshold': 50,
         'js_code': _build_js_code(action),
         'js_only': reuse_session,
         'session_id': SESSION_ID,
