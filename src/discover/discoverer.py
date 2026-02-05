@@ -13,7 +13,7 @@ from typing import Dict, Any, List
 
 from src.discover.agent.discovery_agent import DiscoveryAgent
 from src.discover.agent.models import Article
-from src.discover.config import discovery_config
+from src.discover.config import discovery_config, DiscoveryConfig
 from src.discover.models import DiscoveredArticle, DiscoveryData, DiscoveryResult
 from src.shared.persistence import save_data
 from src.shared.pipeline_state import PipelineStateManager
@@ -53,8 +53,8 @@ class Discoverer:
     with intelligent date detection and filtering.
     """
     
-    def __init__(self):
-        self.config = discovery_config
+    def __init__(self, config: DiscoveryConfig = None):
+        self.config = config or discovery_config
         logger.debug("Discoverer initialized with real agent discovery")
     
     async def _run_agent_async(self, search_url: str, start_date: str, end_date: str) -> List[Article]:
@@ -130,7 +130,7 @@ class Discoverer:
                     logger.debug(f"Discovered: {discovered.id}")
                     
             except Exception as e:
-                logger.error(f"Error searching {search_url}: {e}")
+                logger.error(f"Error searching {search_url}: {e}", exc_info=True)
                 continue
         
         processing_time = round(time.time() - start_time, 2)

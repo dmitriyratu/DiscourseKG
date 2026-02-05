@@ -2,7 +2,7 @@ version: "1.0"
 
 extraction_prompt: |
   Extract all articles from this page. Return JSON:
-  {"articles": [...], "next_action": {... or null}, "extraction_issues": [...]}
+  {{"articles": [...], "next_action": {{... or null}}, "extraction_issues": [...]}}
 
   Each article: title (headline), url (full URL), date_candidates (array).
   Each date_candidate: date (YYYY-MM-DD only), source (exactly one of: {date_source_enum_values}).
@@ -14,11 +14,11 @@ extraction_prompt: |
 
   Example (one article, two sources):
   "date_candidates": [
-    {"date": "2026-01-28", "source": "url_path"},
-    {"date": "2026-01-28", "source": "near_title"}
+    {{"date": "2026-01-28", "source": "url_path"}},
+    {{"date": "2026-01-28", "source": "near_title"}}
   ]
 
-  next_action: {"type": "click", "value": "a[href='...']"} for pagination; {"type": "scroll"} for load-more; null if done.
+  next_action: {{"type": "click", "value": "a[href='...']"}} for pagination; {{"type": "scroll"}} for load-more; null if done.
   Prefer href selectors: a[href="full-url"]. extraction_issues: list any problems.
 
   Process the ENTIRE document.{delta_mode_suffix}

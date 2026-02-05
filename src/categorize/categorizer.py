@@ -81,7 +81,7 @@ class Categorizer:
         return "\n".join(f"  {name}: {field.description}" 
                         for name, field in CategorizationInput.model_fields.items())
     
-    def _format_error_text(self, error_message: str = None, failed_output: Any = None) -> str:
+    def _format_error_text(self, error_message: Optional[str] = None, failed_output: Optional[str] = None) -> str:
         """Format previous error message and failed output for the prompt"""
         if not error_message:
             return ""
@@ -91,18 +91,14 @@ class Categorizer:
         # Include the failed output if available
         if failed_output:
             try:
-                # Pretty print the failed JSON output
                 if isinstance(failed_output, str):
                     formatted_output = failed_output
                 else:
                     formatted_output = json.dumps(failed_output, indent=2)
                 
-                output_length = len(formatted_output)
                 error_context += f"Your previous output:\n{formatted_output}\n\n"
             except Exception as e:
-                # If formatting fails, skip showing the output
                 logger.warning(f"Failed to format failed_output: {e}")
-                pass
         
         error_context += f"Validation error:\n{error_message}\n\n"
         error_context += "Fix the validation errors and try again. Keep all correct parts and only fix what's wrong.\n"
