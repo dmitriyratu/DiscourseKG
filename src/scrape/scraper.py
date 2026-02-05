@@ -31,10 +31,10 @@ class Scraper:
         logger.debug(f"Starting scraping for URL: {processing_context.source_url}")
         
         # TODO: Replace with real web scraping
-        # For now, generate mock data
+        # For now, generate mock data (content_type will be determined by categorize stage)
         scrape_data = generate_test_transcript(
             {'id': processing_context.id, 'source_url': processing_context.source_url}, 
-            processing_context.content_type or 'speech'
+            'speech'  # Default for mock - real scraper won't determine type
         )
         
         return self._create_result(scrape_data)

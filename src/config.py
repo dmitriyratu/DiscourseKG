@@ -3,23 +3,39 @@ Configuration settings for the DiscourseKG platform.
 """
 
 import os
-from typing import Optional
+from pathlib import Path
+from pydantic import BaseModel, Field, computed_field
 from dotenv import load_dotenv
 from pyprojroot import here
 
+load_dotenv()
 
-class Config:
+
+class Config(BaseModel):
     """Configuration class for the DiscourseKG platform."""
-
-    load_dotenv()
     
     # Environment Configuration
-    ENVIRONMENT: str = os.getenv('ENVIRONMENT', 'test')
+    ENVIRONMENT: str = Field(default_factory=lambda: os.getenv('ENVIRONMENT', 'test'))
     
-    # Data Paths - Use absolute paths from project root
-    PROJECT_ROOT = here()
-    DATA_ROOT: str = str(PROJECT_ROOT / "data")
-    PIPELINE_STATE_FILE: str = str(PROJECT_ROOT / "data" / ENVIRONMENT / "state" / f"pipeline_state_{ENVIRONMENT}.jsonl")
+    @computed_field
+    @property
+    def PROJECT_ROOT(self) -> Path:
+        """Project root directory."""
+        return here()
+    
+    @computed_field
+    @property
+    def DATA_ROOT(self) -> str:
+        """Data directory path."""
+        return str(self.PROJECT_ROOT / "data")
+    
+    @computed_field
+    @property
+    def PIPELINE_STATE_FILE(self) -> str:
+        """Pipeline state file path."""
+        return str(self.PROJECT_ROOT / "data" / self.ENVIRONMENT / "state" / f"pipeline_state_{self.ENVIRONMENT}.jsonl")
+    
+    model_config = {"frozen": True}  # Make immutable
 
 
 # Global config instance

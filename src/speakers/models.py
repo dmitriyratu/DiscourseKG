@@ -1,8 +1,8 @@
 """Speaker data models for the DiscourseKG platform."""
 
-from pydantic import BaseModel
-from typing import Dict
+from typing import Dict, List, Optional
 from enum import Enum
+from pydantic import BaseModel, Field
 
 
 class Industry(str, Enum):
@@ -18,13 +18,14 @@ class Industry(str, Enum):
 
 class Speaker(BaseModel):
     """Individual speaker profile."""
-    display_name: str
-    role: str
-    organization: str
-    industry: Industry
-    region: str
-    date_of_birth: str
-    bio: str
+    display_name: str = Field(..., description="Full formatted name for display purposes")
+    role: str = Field(..., description="Position/title")
+    organization: str = Field(..., description="Affiliated organization or institution")
+    industry: Industry = Field(..., description="Domain/sector")
+    region: str = Field(..., description="Geographic location")
+    date_of_birth: str = Field(..., description="Speaker's birth date")
+    bio: str = Field(..., description="Biographical information about the speaker")
+    search_urls: List[str] = Field(default_factory=list, description="URLs to search for speaker content")
 
 
 class SpeakerRegistry(BaseModel):

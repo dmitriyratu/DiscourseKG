@@ -1,17 +1,20 @@
-"""Compact rich console logging for agent visibility."""
+"""Compact rich console logging for discovery agent visibility."""
+
 from datetime import date, datetime
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 from rich.table import Table
-from playground.browser_tools_v13.models import Article, NavigationAction, PageExtraction
-from playground.browser_tools_v13.crawler import PageCrawler
+
+from src.discover.agent.models import Article, NavigationAction, PageExtraction
+from src.discover.agent.page_discoverer import PageDiscoverer
 
 console = Console()
 
 
-class AgentLogger:
-    """Lightweight logger for agent thinking visibility."""
+class DiscoveryLogger:
+    """Lightweight logger for discovery agent thinking visibility."""
     
     def __init__(self):
         self.seen_urls: set[str] = set()
@@ -26,12 +29,12 @@ class AgentLogger:
     
     async def observe_with_logging(
         self,
-        page_crawler: PageCrawler,
+        page_discoverer: PageDiscoverer,
         url: str,
         action: NavigationAction | None = None,
         reuse_session: bool = False,
     ) -> tuple[PageExtraction, int, dict[str, int | float] | None]:
-        """Wrapper around PageCrawler.observe() that captures token usage. Returns (extraction, markdown_len, llm_info)."""
+        """Wrapper around PageDiscoverer.observe() that captures token usage."""
         llm_info: dict[str, int | float] | None = None
         
         def log_result(result, extraction_strategy, llm_time: float):
@@ -48,7 +51,7 @@ class AgentLogger:
                     "llm_time": llm_time
                 }
 
-        extraction, markdown_len = await page_crawler.observe(url, action, reuse_session, result_callback=log_result)
+        extraction, markdown_len = await page_discoverer.observe(url, action, reuse_session, result_callback=log_result)
         return extraction, markdown_len, llm_info
     
     def extraction_result(self, articles: list[Article], valid: list[Article],
@@ -90,7 +93,7 @@ class AgentLogger:
             summary.append(f"\nIssues: {', '.join(extraction_issues)}", style="red")
 
         if llm_info:
-            summary.append(f"\nLLM: {llm_info['input_tokens']:,} in + {llm_info['output_tokens']:,} out = {llm_info['total_tokens']:,} tokens | ⏱: {llm_info['llm_time']:.2f}s", style="dim")
+            summary.append(f"\nLLM: {llm_info['input_tokens']:,} in + {llm_info['output_tokens']:,} out = {llm_info['total_tokens']:,} tokens | time: {llm_info['llm_time']:.2f}s", style="dim")
 
         console.print(Panel(summary, title="Results", title_align="left", border_style="white"))
 

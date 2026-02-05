@@ -49,21 +49,11 @@ class FlowProcessor:
             elapsed = max(0.01, time.time() - start_time)
             result_data['processing_time_seconds'] = round(elapsed, 2)
             
-            # Extract metadata from pipeline state
-            speaker = item.get('speaker')
-            content_type = item.get('content_type', 'unknown')
-            
             # Extract id from output
             id = result_data['output']['id']
             
-            # Save the result
-            output_file = save_data(
-                id, 
-                result_data['output'],
-                data_type, 
-                speaker=speaker,
-                content_type=content_type
-            )
+            # Save the result (speaker/search_url looked up from state automatically)
+            output_file = save_data(id, result_data['output'], data_type)
             
             # Update pipeline state
             manager.update_stage_status(

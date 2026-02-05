@@ -1,0 +1,28 @@
+version: "1.0"
+
+extraction_prompt: |
+  Extract all articles from this page. Return JSON:
+  {"articles": [...], "next_action": {... or null}, "extraction_issues": [...]}
+
+  Each article: title (headline), url (full URL), date_candidates (array).
+  Each date_candidate: date (YYYY-MM-DD only), source (exactly one of: {date_source_enum_values}).
+
+  Date sources — use one candidate per source that applies; do not merge:
+  {date_source_bullets}
+
+  Rule: If both the URL and the title (or adjacent line) contain a date for the same article, output two candidates — one with source "url_path", one with source "near_title". Same date, two entries.
+
+  Example (one article, two sources):
+  "date_candidates": [
+    {"date": "2026-01-28", "source": "url_path"},
+    {"date": "2026-01-28", "source": "near_title"}
+  ]
+
+  next_action: {"type": "click", "value": "a[href='...']"} for pagination; {"type": "scroll"} for load-more; null if done.
+  Prefer href selectors: a[href="full-url"]. extraction_issues: list any problems.
+
+  Process the ENTIRE document.{delta_mode_suffix}
+
+delta_mode_suffix: |
+  
+  The content above is only the NEW portion of an infinitely-scrolled page (previous content omitted). Extract articles from it.

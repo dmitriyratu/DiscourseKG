@@ -9,15 +9,15 @@ class ScrapeItem(BaseModel):
     id: str = Field(..., description="Identifier of the pipeline item to scrape")
     source_url: str = Field(..., description="URL to scrape content from")
     speaker: Optional[str] = Field(None, description="Speaker associated with the content")
-    content_type: str = Field(..., description="Type of content to scrape")
     content_date: Optional[str] = Field(None, description="Date of the content")
+    # content_type removed - not needed until categorize stage
 
 
 class ScrapeContext(BaseModel):
     """Processing context for scraping operation."""
     id: str = Field(..., description="Unique identifier for the item")
     source_url: str = Field(..., description="URL to scrape content from")
-    content_type: str = Field(..., description="Type of content being scraped")
+    # content_type removed - not needed for scraping
 
 
 class ScrapingData(BaseModel):
@@ -26,7 +26,7 @@ class ScrapingData(BaseModel):
     word_count: int = Field(..., description="Word count of scraped content")
     title: str = Field(..., description="Title of the scraped content")
     content_date: str = Field(..., description="Date of the content")
-    content_type: str = Field(..., description="Type of content (speech, interview, debate)")
+    content_type: Optional[str] = Field(None, description="Type of content (determined by categorize stage)")
 
 
 class ScrapingResult(BaseModel):

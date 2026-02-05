@@ -26,8 +26,7 @@ class ScrapeEndpoint(BaseEndpoint):
         # Build processing context
         processing_context = ScrapeContext(
             id=scrape_item.id,
-            source_url=scrape_item.source_url,
-            content_type=scrape_item.content_type
+            source_url=scrape_item.source_url
         )
 
         # Execute scraping pipeline - returns StageResult

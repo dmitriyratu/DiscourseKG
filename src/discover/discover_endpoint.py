@@ -1,11 +1,11 @@
 """
 Discover endpoint for finding content sources.
 
-This endpoint handles the discovery of content sources and creation of pipeline states.
-Currently uses mock discovery - will be replaced with agent-based discovery.
+This endpoint handles the discovery of content sources and creation of pipeline states
+using autonomous web scraping.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any
 from src.shared.base_endpoint import BaseEndpoint
 from src.discover.pipeline import discover_content
 from src.shared.pipeline_definitions import PipelineStages
@@ -23,13 +23,17 @@ class DiscoverEndpoint(BaseEndpoint):
         request = DiscoveryRequest(**discovery_params)
         
         self.logger.info(f"Processing discovery request for speaker: {request.speaker}")
-        self.logger.debug(f"Discovery parameters: {request.start_date} to {request.end_date}")
+        self.logger.debug(f"Discovery parameters: {request.start_date} to {request.end_date}, {len(request.search_urls)} search URLs")
         
         # Execute discovery pipeline - returns StageResult
         stage_result = discover_content(request.model_dump())
         
-        self.logger.debug(
-            f"Successfully discovered {stage_result.artifact['data']['item_count']} items for speaker {request.speaker}"
+        data = stage_result.artifact.get('data', {})
+        new_articles = data.get('new_articles', 0)
+        total_found = data.get('total_found', 0)
+        
+        self.logger.info(
+            f"Discovered {new_articles} new articles (from {total_found} total found) for speaker {request.speaker}"
         )
         
         return self._create_success_response(

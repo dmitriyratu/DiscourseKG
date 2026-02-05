@@ -35,7 +35,8 @@ class PipelineState(BaseModel):
     content_type: Optional[str] = Field(None, description="Type of content (speech, debate, interview, etc.)")
     title: Optional[str] = Field(None, description="Title of the scraped content")
     content_date: Optional[str] = Field(None, description="Date when the content was created/published")
-    source_url: Optional[str] = Field(None, description="Original source URL")
+    source_url: Optional[str] = Field(None, description="Article URL (for scraping)")
+    search_url: Optional[str] = Field(None, description="Search page URL (discovery source for traceability)")
     
     # Simple stage tracking
     latest_completed_stage: Optional[str] = Field(None, description="Latest successfully completed stage")
@@ -71,7 +72,8 @@ class PipelineStateManager:
         self.pipeline_config = PipelineConfig()
     
     def create_state(self, id: str, run_timestamp: str, file_path: str = None, 
-                    source_url: str = None, speaker: str = None, content_type: str = None) -> PipelineState:
+                    source_url: str = None, search_url: str = None, 
+                    speaker: str = None, content_type: str = None) -> PipelineState:
         """Create a new pipeline state for a data point"""
         now = datetime.now().isoformat()
         
@@ -85,6 +87,7 @@ class PipelineStateManager:
             run_timestamp=run_timestamp,
             file_paths=file_paths,
             source_url=source_url,
+            search_url=search_url,
             speaker=speaker,
             content_type=content_type,
             latest_completed_stage=PipelineStages.DISCOVER.value,
