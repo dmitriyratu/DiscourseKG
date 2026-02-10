@@ -7,17 +7,19 @@ Provides standardized execute method and common patterns for endpoint implementa
 from typing import Dict, Any, Optional
 from abc import ABC, abstractmethod
 from src.utils.logging_utils import get_logger
+from src.shared.pipeline_definitions import EndpointResponse
+from src.shared.pipeline_definitions import PipelineState
 
 
 class BaseEndpoint(ABC):
     """Base class for all pipeline endpoints with standardized interface."""
     
-    def __init__(self, endpoint_name: str):
+    def __init__(self, endpoint_name: str) -> None:
         self.endpoint_name = endpoint_name
         self.logger = get_logger(endpoint_name)
     
     @abstractmethod
-    def execute(self, item: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, state: PipelineState) -> EndpointResponse:
         """Execute the endpoint processing for a single item."""
         pass
     
@@ -25,16 +27,15 @@ class BaseEndpoint(ABC):
         self,
         result: Any,
         stage: str,
-        input_data: Any = None,
-        state_update: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        input_data: Optional[Any] = None,
+        state_update: Optional[Dict[str, Any]] = None,
+    ) -> EndpointResponse:
         """Create standardized success response."""
-        response = {
-            'success': True,
-            'stage': stage,
-            'output': result,
-            'input_data': input_data,
-            'state_update':state_update,
-        }
-        return response
+        return EndpointResponse(
+            success=True,
+            stage=stage,
+            output=result,
+            input_data=input_data,
+            state_update=state_update
+        )
 

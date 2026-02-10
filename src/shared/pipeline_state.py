@@ -7,9 +7,8 @@ following the same patterns as the existing logging utilities.
 
 import json
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel, Field
 
 from src.config import config
 from src.utils.logging_utils import get_logger
@@ -17,88 +16,62 @@ from src.shared.pipeline_definitions import (
     PipelineConfig,
     PipelineStages,
     PipelineStageStatus,
+    PipelineState,
+    StageMetadata,
 )
+from src.shared.models import StageOperationResult
+from src.shared.pipeline_definitions import EndpointResponse
+from src.discover.models import DiscoveredArticle, DiscoverStageMetadata
 
 logger = get_logger(__name__)
-
-
-class PipelineState(BaseModel):
-    """Pipeline processing state for a single data point"""
-    
-    # Core identifiers
-    id: str = Field(..., description="Unique ID from raw data (matches the 'id' field in raw JSON files)")
-    run_timestamp: str = Field(..., description="Hourly timestamp when scraped (YYYY-MM-DD_HH:00:00)")
-    file_paths: Dict[str, str] = Field(default_factory=dict, description="File paths for each completed stage (stage_name -> file_path)")
-    
-    # Content metadata
-    speaker: Optional[str] = Field(None, description="Primary speaker name")
-    content_type: Optional[str] = Field(None, description="Type of content (speech, debate, interview, etc.)")
-    title: Optional[str] = Field(None, description="Title of the scraped content")
-    content_date: Optional[str] = Field(None, description="Date when the content was created/published")
-    source_url: Optional[str] = Field(None, description="Article URL (for scraping)")
-    search_url: Optional[str] = Field(None, description="Search page URL (discovery source for traceability)")
-    
-    # Simple stage tracking
-    latest_completed_stage: Optional[str] = Field(None, description="Latest successfully completed stage")
-    next_stage: Optional[str] = Field(..., description="Next stage that needs to be processed")
-    
-    # Metadata
-    created_at: str = Field(..., description="ISO timestamp when record was created")
-    updated_at: str = Field(..., description="ISO timestamp of last update")
-    error_message: Optional[str] = Field(None, description="Error message if current stage failed")
-    failed_output: Optional[str] = Field(None, description="Failed output from previous attempt (for retry context)")
-    
-    # Processing metrics
-    processing_time_seconds: Optional[float] = Field(None, description="Total processing time across all stages")
-    retry_count: int = Field(default=0, description="Number of times this record has been retried")
-
-    def get_current_file_path(self) -> Optional[str]:
-        """Get file path for the latest completed stage"""
-        if self.latest_completed_stage:
-            return self.file_paths.get(self.latest_completed_stage)
-        return None
-    
-    def get_file_path_for_stage(self, stage: str) -> Optional[str]:
-        """Get file path for a specific stage"""
-        return self.file_paths.get(stage)
 
 
 class PipelineStateManager:
     """Manages pipeline state tracking for data processing"""
     
-    def __init__(self, state_file_path: str = None):
+    def __init__(self, state_file_path: Optional[str] = None) -> None:
         self.state_file_path = Path(state_file_path or config.PIPELINE_STATE_FILE)
         self.state_file_path.parent.mkdir(parents=True, exist_ok=True)
         self.pipeline_config = PipelineConfig()
     
-    def create_state(self, id: str, run_timestamp: str, file_path: str = None, 
-                    source_url: str = None, search_url: str = None, 
-                    speaker: str = None, content_type: str = None) -> PipelineState:
-        """Create a new pipeline state for a data point"""
+    def create_state(self, discovered_article: DiscoveredArticle, run_timestamp: str,
+                     file_path: Optional[str] = None, search_url: Optional[str] = None) -> PipelineState:
+        """Create a new pipeline state for a discovered article"""
         now = datetime.now().isoformat()
         
-        # Initialize file_paths with initial file_path if provided
-        file_paths = {}
-        if file_path:
-            file_paths[PipelineStages.DISCOVER.value] = file_path
+        # Extract metadata from discovered article (only stage-specific fields)
+        discover_metadata = DiscoverStageMetadata(
+            date_score=discovered_article.date_score,
+            date_source=discovered_article.date_source
+        )
+        
+        # Initialize stages with discover stage
+        discover_stage = StageMetadata(
+            completed_at=now,
+            file_path=file_path,
+            metadata=discover_metadata.model_dump()
+        )
+        stages = {
+            PipelineStages.DISCOVER.value: discover_stage
+        }
         
         state = PipelineState(
-            id=id,
+            id=discovered_article.id,
             run_timestamp=run_timestamp,
-            file_paths=file_paths,
-            source_url=source_url,
+            source_url=discovered_article.url,
             search_url=search_url,
-            speaker=speaker,
-            content_type=content_type,
+            speaker=discovered_article.speaker,
+            title=discovered_article.title,
+            publication_date=discovered_article.publication_date,
             latest_completed_stage=PipelineStages.DISCOVER.value,
             next_stage=PipelineStages.SCRAPE.value,
             created_at=now,
-            updated_at=now
+            updated_at=now,
+            stages=stages
         )
         
-        # Append to state file
         self._append_state(state)
-        logger.debug(f"Created pipeline state for data point: {id}")
+        logger.debug(f"Created pipeline state for data point: {discovered_article.id}")
         
         return state
     
@@ -123,102 +96,94 @@ class PipelineStateManager:
                         return PipelineState(**record)
         return None
     
-    def update_stage_status(self, id: str, stage: str, status: PipelineStageStatus, 
-                           result_data: dict = None, file_path: str = None):
-        """Update status of a specific stage for a data point"""
-        # Read all existing states
-
+    def update_stage_status(self, status: PipelineStageStatus, result_data: EndpointResponse, file_path: Optional[str] = None) -> None:
+        """Update status of a specific stage for a data point."""
+        # Derive id and stage from result_data
+        stage = result_data.stage
+        output = StageOperationResult[Any].model_validate(result_data.output)
+        id = output.id
         
         states = self._read_all_states()
         
-        # Find and update the matching state
         updated = False
-        for state_dict in states:
+        for i, state_dict in enumerate(states):
             if state_dict["id"] == id:
-                state_dict["updated_at"] = datetime.now().isoformat()
+                # Parse state dict into PipelineState model
+                state = PipelineState(**state_dict)
+                now = datetime.now().isoformat()
+                state.updated_at = now
                 
-                processing_time = None
-                error_message = None
-                failed_output = None
-                if result_data:
-                    processing_time = result_data.get('processing_time_seconds')
-                    output = result_data.get('output', {})
-                    error_message = output.get('error_message')
-                    failed_output = output.get('failed_output')
+                # Get or create stage metadata
+                if stage not in state.stages:
+                    stage_meta = StageMetadata()
+                else:
+                    stage_meta = state.stages[stage]
                 
+                # Extract data from result_data
+                processing_time = result_data.processing_time_seconds
+                custom_metadata = result_data.state_update or {}
+                error_message = output.error_message
+                
+                # Update stage-specific processing time
                 if processing_time:
-                    if state_dict["processing_time_seconds"]:
-                        state_dict["processing_time_seconds"] = round(state_dict["processing_time_seconds"] + processing_time, 2)
-                    else:
-                        state_dict["processing_time_seconds"] = round(processing_time, 2)
+                    stage_meta.processing_time_seconds = round(processing_time, 2)
+                    
+                    # Update top-level total processing time
+                    current_total = state.processing_time_seconds or 0
+                    state.processing_time_seconds = round(current_total + processing_time, 2)
                 
-                # Update file_paths for the specific stage
+                # Store stage-specific custom metadata
+                if custom_metadata:
+                    stage_meta.metadata.update(custom_metadata)
+                
+                # Store error if present
+                if error_message:
+                    stage_meta.error_message = error_message
+                    state.error_message = error_message
+                
+                # Update file path (nested only)
                 if file_path:
-                    if "file_paths" not in state_dict:
-                        state_dict["file_paths"] = {}
-                    state_dict["file_paths"][stage] = file_path
+                    stage_meta.file_path = file_path
                 
                 # Handle stage completion or failure
                 if status == PipelineStageStatus.COMPLETED:
-                    # Stage completed successfully - update latest_completed_stage and next_stage
-                    state_dict["latest_completed_stage"] = stage
-                    state_dict["next_stage"] = self.pipeline_config.get_next_stage(stage)
-                    state_dict["error_message"] = None  # Clear any previous errors
-                    state_dict["failed_output"] = None  # Clear any previous failed output
+                    stage_meta.completed_at = now
+                    stage_meta.error_message = None
+                    state.latest_completed_stage = stage
+                    state.next_stage = self.pipeline_config.get_next_stage(stage)
+                    state.error_message = None
+                    
                 elif status == PipelineStageStatus.FAILED:
-                    # Stage failed - don't update latest_completed_stage, keep next_stage the same for retry
-                    state_dict["error_message"] = error_message
-                    state_dict["failed_output"] = failed_output
-                    # next_stage stays the same (retry the failed stage)
+                    stage_meta.retry_count += 1
+                    state.retry_count = (state.retry_count or 0) + 1
+                
+                # Update stages dict with modified stage_meta
+                state.stages[stage] = stage_meta
+                
+                # Convert back to dict and replace in list
+                states[i] = state.model_dump()
                 
                 updated = True
                 break
         
         if updated:
-            # Rewrite the entire file with updated states
             self._write_all_states(states)
             if status == PipelineStageStatus.FAILED:
                 logger.error(f"Stage {stage} failed for data point: {id}")
             elif status == PipelineStageStatus.COMPLETED:
                 logger.debug(f"Completed {stage} for data point: {id}")
-            else:
-                logger.debug(f"Updated {stage} status to {status.value} for data point: {id}")
         else:
             logger.warning(f"Data point not found for update: {id}")
     
-    def _update_metadata_naturally(self, id: str, **metadata):
-        """Naturally update metadata fields as stages extract information"""
-        states = self._read_all_states()
-        
-        for state_dict in states:
-            if state_dict["id"] == id:
-                state_dict["updated_at"] = datetime.now().isoformat()
-                
-                # Update any provided metadata fields (only if they exist in PipelineState schema)
-                valid_fields = set(PipelineState.model_fields.keys())
-                updated_fields = []
-                
-                for field, value in metadata.items():
-                    if field in valid_fields and value is not None:
-                        state_dict[field] = value
-                        updated_fields.append(field)
-                
-                if updated_fields:
-                    self._write_all_states(states)
-                    logger.debug(f"Naturally updated metadata for {id}: {updated_fields}")
-                else:
-                    logger.debug(f"No valid metadata fields to update for {id}: {list(metadata.keys())}")
-                return
-        
-        logger.warning(f"Data point not found for natural metadata update: {id}")
     
-    def get_next_stage_tasks(self, stage: str) -> List[PipelineState]:
+    def get_next_stage_tasks(self, stage: PipelineStages) -> List[PipelineState]:
         """Get all data points where the next_stage matches the requested stage"""
         tasks = []
         states = self._read_all_states()
+        stage_value = stage.value
         
         for state_dict in states:
-            if state_dict.get("next_stage") == stage:
+            if state_dict.get("next_stage") == stage_value:
                 tasks.append(PipelineState(**state_dict))
         
         return tasks
@@ -235,12 +200,12 @@ class PipelineStateManager:
         return failed
     
     
-    def _append_state(self, state: PipelineState):
+    def _append_state(self, state: PipelineState) -> None:
         """Append a new state to the file"""
         with open(self.state_file_path, "a", encoding="utf-8") as f:
             f.write(state.model_dump_json() + "\n")
     
-    def _read_all_states(self) -> List[dict]:
+    def _read_all_states(self) -> List[Dict[str, Any]]:
         """Read all states from the file"""
         states = []
         if not self.state_file_path.exists():
@@ -253,9 +218,10 @@ class PipelineStateManager:
         
         return states
     
-    def _write_all_states(self, states: List[dict]):
+    def _write_all_states(self, states: List[Dict[str, Any]]) -> None:
         """Write all states to the file"""
         with open(self.state_file_path, "w", encoding="utf-8") as f:
             for state_dict in states:
-                f.write(json.dumps(state_dict) + "\n")
+                state = PipelineState(**state_dict)
+                f.write(state.model_dump_json() + "\n")
 

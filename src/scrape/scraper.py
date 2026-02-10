@@ -10,6 +10,7 @@ from tests.transcript_generator import generate_test_transcript
 from src.utils.logging_utils import get_logger
 from src.scrape.models import ScrapingResult, ScrapingData, ScrapeContext
 from src.shared.pipeline_definitions import StageResult
+from src.shared.models import ContentType
 
 logger = get_logger(__name__)
 
@@ -23,7 +24,7 @@ class Scraper:
     will be replaced with real web scraping functionality.
     """
     
-    def __init__(self):
+    def __init__(self) -> None:
         logger.debug("Scraper initialized")
     
     def scrape_content(self, processing_context: ScrapeContext) -> StageResult:
@@ -34,24 +35,19 @@ class Scraper:
         # For now, generate mock data (content_type will be determined by categorize stage)
         scrape_data = generate_test_transcript(
             {'id': processing_context.id, 'source_url': processing_context.source_url}, 
-            'speech'  # Default for mock - real scraper won't determine type
+            ContentType.SPEECH.value  # Default for mock - real scraper won't determine type
         )
         
         return self._create_result(scrape_data)
     
     def _create_result(self, scrape_data: Dict[str, Any]) -> StageResult:
-        """Helper to create StageResult with separated artifact and metadata."""
-        
+        """Helper to create StageResult."""
         scrape_text = scrape_data['scrape']
         scraping_data = ScrapingData(
             scrape=scrape_text,
-            word_count=len(scrape_text.split()) if scrape_text else 0,
-            title=scrape_data['title'],
-            content_date=scrape_data['content_date'],
-            content_type=scrape_data['content_type']
+            word_count=len(scrape_text.split()) if scrape_text else 0
         )
         
-        # Build artifact (what gets persisted)
         artifact = ScrapingResult(
             id=scrape_data['id'],
             success=True,
@@ -59,12 +55,5 @@ class Scraper:
             error_message=None
         )
         
-        # Extract metadata (for state updates only)
-        metadata = {
-            "title": scrape_data.get("title"),
-            "content_date": scrape_data.get("content_date"),
-            "content_type": scrape_data.get("content_type"),
-        }
-        
         logger.debug(f"Successfully scraped: {artifact.id} - {scraping_data.word_count} words")
-        return StageResult(artifact=artifact.model_dump(), metadata=metadata)
+        return StageResult(artifact=artifact.model_dump(), metadata={})

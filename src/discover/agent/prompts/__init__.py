@@ -1,9 +1,12 @@
 """Prompt management for discovery."""
 import yaml
 from pathlib import Path
+from typing import Tuple
+
 from src.discover.agent.models import DateSource
 
-def load_prompts():
+
+def load_prompts() -> Tuple[str, str]:
     """Load prompts from YAML file."""
     prompts_file = Path(__file__).parent / "extraction.yaml"
     with open(prompts_file, 'r', encoding='utf-8') as f:

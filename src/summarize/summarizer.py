@@ -11,7 +11,7 @@ import tiktoken
 import time
 from sentence_transformers import SentenceTransformer, util
 from nltk.tokenize import sent_tokenize
-from typing import Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from src.summarize.models import SummarizationResult, SummarizationData, SummarizeContext
 from src.config import config
@@ -41,7 +41,7 @@ class Summarizer:
     INTRO_SENTENCES = 0  # No special treatment for intros
     CONCLUSION_SENTENCES = 0  # No special treatment for conclusions
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.tokenizer = tiktoken.get_encoding(summarization_config.SUMMARIZER_TOKENIZER)
         self.model = SentenceTransformer(summarization_config.SUMMARIZER_MODEL)
     
@@ -111,7 +111,7 @@ class Summarizer:
         return summary_text
     
     
-    def _get_position_scores(self, sentences) -> tuple[np.ndarray, np.ndarray]:
+    def _get_position_scores(self, sentences: List[str]) -> tuple[np.ndarray, np.ndarray]:
         """Calculate position-based scores (minimal for generalizability)."""
         num_sentences = len(sentences)
         
@@ -121,7 +121,7 @@ class Summarizer:
         
         return intro_scores, conclusion_scores
     
-    def _compute_hybrid_scores(self, sentences):
+    def _compute_hybrid_scores(self, sentences: List[str]) -> np.ndarray:
         """Compute semantic similarity scores for sentence ranking."""
         num_sentences = len(sentences)
         

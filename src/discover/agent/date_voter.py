@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 from datetime import date
+from typing import Dict, List, Tuple
 
 import pandas as pd
 
@@ -13,7 +14,7 @@ class DateVoter:
     THRESHOLD = 2
 
     @staticmethod
-    def inlier_articles(articles: list[Article]) -> tuple[list[Article], list[Article]]:
+    def inlier_articles(articles: List[Article]) -> Tuple[List[Article], List[Article]]:
         """Keep articles whose publication_date is within [p05 - 5d, min(p95 + 5d, today)]. Returns (inliers, dropped)."""
         if not articles:
             return [], []
@@ -32,18 +33,18 @@ class DateVoter:
         return df.loc[is_inlier, "article"].tolist(), df.loc[~is_inlier, "article"].tolist()
 
     @staticmethod
-    def vote(candidates: list[DateCandidate]) -> DateVoteResult:
+    def vote(candidates: List[DateCandidate]) -> DateVoteResult:
         """Vote on date candidates and return the winning date."""
         if not candidates:
             return DateVoteResult()
         
         # Group candidates by date value
-        date_groups: dict[str, list[DateCandidate]] = defaultdict(list)
+        date_groups: Dict[str, List[DateCandidate]] = defaultdict(list)
         for candidate in candidates:
             date_groups[candidate.date].append(candidate)
         
         # Calculate score for each date
-        date_scores: dict[str, tuple[int, str]] = {}
+        date_scores: Dict[str, Tuple[int, str]] = {}
         for date_str, group in date_groups.items():
             # Sum base weights + consensus bonus (number_of_sources - 1)
             base_score = sum(DateSource.weight_for(c.source.value) for c in group)

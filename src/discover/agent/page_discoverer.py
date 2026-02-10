@@ -3,7 +3,7 @@
 import json
 import time
 from difflib import Differ
-from typing import Callable
+from typing import Callable, List, Optional, Tuple
 
 from crawl4ai import AsyncWebCrawler, CrawlerRunConfig, CacheMode, LLMExtractionStrategy, LLMConfig
 
@@ -23,9 +23,9 @@ class PageDiscoverer:
     SCROLL_WAIT_MS = 4000
     SCROLL_POLL_MS = 150
 
-    def __init__(self, crawler: AsyncWebCrawler):
+    def __init__(self, crawler: AsyncWebCrawler) -> None:
         self.crawler = crawler
-        self._last_markdown: str | None = None
+        self._last_markdown: Optional[str] = None
 
     def _diff_added_only(self, old: str, new: str) -> str:
         """Return only lines added in new relative to old (Differ, line-based)."""
@@ -64,7 +64,7 @@ class PageDiscoverer:
         await delay(500);
     """
 
-    def _build_js_code(self, action: NavigationAction | None) -> list[str]:
+    def _build_js_code(self, action: Optional[NavigationAction]) -> List[str]:
         """Generate JS code for the given action."""
         if action and action.type == "scroll":
             return [f"""
@@ -104,9 +104,9 @@ class PageDiscoverer:
 
     def _crawler_config(
         self,
-        action: NavigationAction | None,
+        action: Optional[NavigationAction],
         reuse_session: bool,
-        extraction_strategy: LLMExtractionStrategy | None = None,
+        extraction_strategy: Optional[LLMExtractionStrategy] = None,
     ) -> CrawlerRunConfig:
         kwargs: dict = {
             'cache_mode': CacheMode.BYPASS,
@@ -120,12 +120,9 @@ class PageDiscoverer:
             'js_code': self._build_js_code(action),
             'js_only': reuse_session,
             'session_id': self.SESSION_ID,
-            'delay_before_return_html': 2.0,
+            'delay_before_return_html': 8.0,
             'excluded_tags': ['script', 'style'],
-            'excluded_selector': (
-                'aside, .sidebar, .advertisement, .ads, .social-share, .menu, .breadcrumb, '
-                '[role="dialog"], .modal, .popup, .overlay, #overlay, [data-dialog], .lightbox'
-            ),
+            'excluded_selector': 'aside, .sidebar, .advertisement, .ads, .social-share, .menu, .breadcrumb',
         }
         if extraction_strategy is not None:
             kwargs['extraction_strategy'] = extraction_strategy
@@ -152,10 +149,10 @@ class PageDiscoverer:
     async def observe(
         self,
         url: str,
-        action: NavigationAction | None = None,
+        action: Optional[NavigationAction] = None,
         reuse_session: bool = False,
-        result_callback: Callable | None = None,
-    ) -> tuple[PageExtraction, int]:
+        result_callback: Optional[Callable[..., None]] = None,
+    ) -> Tuple[PageExtraction, int]:
         """Execute action and extract articles + next navigation. Returns (extraction, markdown_len)."""
         result = await self.crawler.arun(
             url, config=self._crawler_config(action, reuse_session), session_id=self.SESSION_ID

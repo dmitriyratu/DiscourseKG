@@ -8,7 +8,7 @@ Implements unified hierarchical file structure across all stages:
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional, Tuple
 from urllib.parse import urlparse
 
 import pyprojroot
@@ -26,7 +26,7 @@ def _extract_date_from_id(id: str) -> str:
     return date_part if re.match(r'^\d{4}-\d{2}-\d{2}$', date_part) else "unknown-date"
 
 
-def _create_search_slug(search_url: str | None) -> str:
+def _create_search_slug(search_url: Optional[str] = None) -> str:
     """Convert search URL to source slug (e.g., 'rollcall.com/factbase/trump/' -> 'rollcall-factbase')."""
     if not search_url:
         return "unknown-source"
@@ -48,7 +48,7 @@ def _create_search_slug(search_url: str | None) -> str:
         return "unknown-source"
 
 
-def _get_state_info(id: str) -> tuple[str | None, str | None]:
+def _get_state_info(id: str) -> Tuple[Optional[str], Optional[str]]:
     """Look up speaker and search_url from PipelineState. Returns (speaker, search_url)."""
     # Import here to avoid circular imports
     from src.shared.pipeline_state import PipelineStateManager

@@ -1,9 +1,10 @@
 """String manipulation utilities."""
 
 import re
+from typing import Optional
 
 
-def slugify(text: str, max_length: int | None = None) -> str:
+def slugify(text: str, max_length: Optional[int] = None) -> str:
     """
     Convert text to URL-safe slug.
     

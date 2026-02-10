@@ -9,40 +9,20 @@ import asyncio
 import hashlib
 import time
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import List
 
 from src.discover.agent.discovery_agent import DiscoveryAgent
+from src.discover.agent.discovery_logger import DiscoveryLogger
 from src.discover.agent.models import Article
 from src.discover.config import discovery_config, DiscoveryConfig
-from src.discover.models import DiscoveredArticle, DiscoveryData, DiscoveryResult
+from src.discover.models import DiscoveredArticle, DiscoveryData, DiscoveryResult, DiscoveryRequest
 from src.shared.persistence import save_data
 from src.shared.pipeline_state import PipelineStateManager
-from src.shared.pipeline_definitions import StageResult
+from src.shared.pipeline_definitions import PipelineStages, StageResult
 from src.utils.logging_utils import get_logger
 from src.utils.string_utils import slugify
 
 logger = get_logger(__name__)
-
-
-def _generate_discover_id(article: Article) -> str:
-    """Generate unique ID from article: {date}-{title_slug}-{url_hash}."""
-    date = article.publication_date or "unknown"
-    title_slug = slugify(article.title, max_length=40)
-    url_hash = hashlib.md5(article.url.encode()).hexdigest()[:6]
-    return f"{date}-{title_slug}-{url_hash}"
-
-
-def _to_discovered_article(article: Article, speaker: str) -> DiscoveredArticle:
-    """Convert v13 Article to DiscoveredArticle."""
-    return DiscoveredArticle(
-        id=_generate_discover_id(article),
-        title=article.title,
-        url=article.url,
-        publication_date=article.publication_date,
-        date_score=article.date_score,
-        date_source=article.date_source.value if article.date_source else "unknown",
-        speaker=speaker
-    )
 
 
 class Discoverer:
@@ -53,79 +33,72 @@ class Discoverer:
     with intelligent date detection and filtering.
     """
     
-    def __init__(self, config: DiscoveryConfig = None):
-        self.config = config or discovery_config
-        logger.debug("Discoverer initialized with real agent discovery")
+    def __init__(self, config: DiscoveryConfig = discovery_config):
+        self.config = config
     
-    async def _run_agent_async(self, search_url: str, start_date: str, end_date: str) -> List[Article]:
+    def _generate_discover_id(self, article: Article) -> str:
+        """Generate unique ID from article: {date}-{title_slug}-{url_hash}."""
+        title_slug = slugify(article.title, max_length=40)
+        url_hash = hashlib.md5(article.url.encode()).hexdigest()[:6]
+        return f"{article.publication_date}-{title_slug}-{url_hash}"
+    
+    async def _run_agent_async(self, search_url: str, start_date: str, end_date: str) -> tuple:
         """Run the discovery agent asynchronously."""
         agent = DiscoveryAgent(headless=self.config.HEADLESS)
         return await agent.run(search_url, start_date, end_date)
     
-    def discover_content(self, discovery_params: Dict[str, Any]) -> StageResult:
+    def discover_content(self, discovery_params: DiscoveryRequest) -> StageResult:
         """Discover content sources using the autonomous agent."""
-        speaker = discovery_params['speaker']
-        start_date = discovery_params['start_date']
-        end_date = discovery_params['end_date']
-        search_urls = discovery_params.get('search_urls', [])
-        
-        if not search_urls:
-            logger.warning(f"No search URLs provided for speaker {speaker}")
-            return self._create_empty_result(speaker, start_date, end_date)
+        if not discovery_params.search_urls:
+            logger.warning(f"No search URLs provided for speaker {discovery_params.speaker}")
+            return self._create_result(discovery_params, [], 0, 0)
         
         start_time = time.time()
-        logger.info(f"Starting discovery for speaker: {speaker} ({len(search_urls)} search URLs)")
+        logger.info(f"Starting discovery for speaker: {discovery_params.speaker} ({len(discovery_params.search_urls)} search URLs)")
         
         run_timestamp = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
-        discovery_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        
         manager = PipelineStateManager()
         all_discovered: List[DiscoveredArticle] = []
         total_found = 0
         duplicates_skipped = 0
-        
-        # Process each search URL
-        for search_url in search_urls:
+        all_dates: List[str] = []
+        total_all = 0
+
+        end_date = discovery_params.end_date or datetime.now().strftime("%Y-%m-%d")
+        for search_url in discovery_params.search_urls:
             logger.info(f"Searching: {search_url}")
-            
+
             try:
-                # Run agent (async wrapped in sync)
-                articles = asyncio.run(self._run_agent_async(search_url, start_date, end_date))
+                articles, all_articles = asyncio.run(self._run_agent_async(search_url, discovery_params.start_date, end_date))
                 total_found += len(articles)
+                total_all += len(all_articles)
+                for a in all_articles:
+                    if getattr(a, "publication_date", None):
+                        all_dates.append(a.publication_date)
                 
-                # Process each article
                 for article in articles:
-                    # Filter by date score
                     if article.date_score is None or article.date_score < self.config.MIN_DATE_SCORE:
                         continue
                     
-                    # Check for duplicates by article URL
                     if manager.get_by_source_url(article.url):
                         duplicates_skipped += 1
                         continue
                     
-                    # Convert to DiscoveredArticle
-                    discovered = _to_discovered_article(article, speaker)
+                    discovered = DiscoveredArticle.from_article(
+                        article, 
+                        self._generate_discover_id(article), 
+                        discovery_params.speaker
+                    )
                     
-                    # Save to file (pass fallbacks since state doesn't exist yet)
                     file_path = save_data(
                         id=discovered.id,
                         data=discovered.model_dump(),
-                        data_type="discover",
-                        speaker=speaker,
+                        data_type=PipelineStages.DISCOVER.value,
+                        speaker=discovery_params.speaker,
                         search_url=search_url
                     )
                     
-                    # Create pipeline state
-                    manager.create_state(
-                        id=discovered.id,
-                        run_timestamp=run_timestamp,
-                        file_path=file_path,
-                        source_url=article.url,  # For scraping
-                        search_url=search_url,   # For traceability
-                        speaker=speaker
-                    )
-                    
+                    manager.create_state(discovered, run_timestamp, file_path, search_url)
                     all_discovered.append(discovered)
                     logger.debug(f"Discovered: {discovered.id}")
                     
@@ -134,49 +107,41 @@ class Discoverer:
                 continue
         
         processing_time = round(time.time() - start_time, 2)
-        new_articles = len(all_discovered)
-        
-        logger.info(
-            f"Discovery complete: {total_found} found, {new_articles} new, "
-            f"{duplicates_skipped} duplicates skipped ({processing_time}s)"
+        date_min = min(all_dates) if all_dates else None
+        date_max = max(all_dates) if all_dates else None
+        DiscoveryLogger().aggregate_complete(
+            all_discovered, total_found, total_all, duplicates_skipped, processing_time,
+            discovery_params.start_date, end_date, date_min, date_max
         )
-        
-        return self._create_result(
-            all_discovered, speaker, start_date, end_date,
-            discovery_timestamp, total_found, new_articles, duplicates_skipped
-        )
-    
-    def _create_empty_result(self, speaker: str, start_date: str, end_date: str) -> StageResult:
-        """Create empty result when no search URLs are provided."""
-        discovery_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        return self._create_result([], speaker, start_date, end_date, discovery_timestamp, 0, 0, 0)
+        return self._create_result(discovery_params, all_discovered, total_found, duplicates_skipped)
     
     def _create_result(
-        self, 
+        self,
+        request: DiscoveryRequest,
         discovered_articles: List[DiscoveredArticle],
-        speaker: str, 
-        start_date: str, 
-        end_date: str,
-        discovery_timestamp: str,
         total_found: int,
-        new_articles: int,
         duplicates_skipped: int
     ) -> StageResult:
         """Create StageResult with discovery data."""
+        discovery_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        discovery_id = f"discovery-{discovery_timestamp}"
+        
         discovery_data = DiscoveryData(
-            discovery_id=f"discovery-{discovery_timestamp}",
+            discovery_id=discovery_id,
             discovered_articles=discovered_articles,
-            speaker=speaker,
-            date_range=f"{start_date} to {end_date}",
+            speaker=request.speaker,
+            date_range=f"{request.start_date} to {request.end_date or 'present'}",
             total_found=total_found,
-            new_articles=new_articles,
+            new_articles=len(discovered_articles),
             duplicates_skipped=duplicates_skipped
         )
         
-        artifact = DiscoveryResult(
-            success=True,
-            data=discovery_data,
-            error_message=None
+        return StageResult(
+            artifact=DiscoveryResult(
+                id=discovery_id,
+                success=True,
+                data=discovery_data,
+                error_message=None
+            ).model_dump(),
+            metadata={}
         )
-        
-        return StageResult(artifact=artifact.model_dump(), metadata=None)

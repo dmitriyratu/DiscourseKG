@@ -4,7 +4,7 @@ Simple data loader for pipeline stages.
 
 import json
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 import pyprojroot
 
 from src.utils.logging_utils import get_logger

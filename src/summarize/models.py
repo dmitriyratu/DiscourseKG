@@ -2,6 +2,7 @@
 
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
+from src.shared.models import StageOperationResult
 
 
 class SummarizationData(BaseModel):
@@ -13,20 +14,22 @@ class SummarizationData(BaseModel):
     target_word_count: int = Field(..., description="Target word count for summary")
 
 
-class SummarizationResult(BaseModel):
+class SummarizationResult(StageOperationResult[SummarizationData]):
     """Result of summarization operation (artifact only, no metadata)."""
-    id: str = Field(..., description="Unique identifier for the summarized content")
-    success: bool = Field(..., description="Whether summarization was successful")
-    data: Optional[SummarizationData] = Field(None, description="Summarized content data")
-    error_message: Optional[str] = Field(None, description="Error message if summarization failed")
+    pass
 
 
 class SummarizeItem(BaseModel):
     """Input record required for summarization."""
-
     id: str = Field(..., description="Identifier of the pipeline item to summarize")
-    file_paths: Dict[str, str] = Field(default_factory=dict, description="Completed stage artifacts")
     latest_completed_stage: str = Field(..., description="Last stage completed for this item")
+    stages: Dict[str, Any] = Field(default_factory=dict, description="Per-stage metadata")
+    
+    def get_current_file_path(self) -> Optional[str]:
+        """Get file path for the latest completed stage"""
+        if self.latest_completed_stage and self.latest_completed_stage in self.stages:
+            return self.stages[self.latest_completed_stage].get('file_path')
+        return None
 
 
 class SummarizeContext(BaseModel):

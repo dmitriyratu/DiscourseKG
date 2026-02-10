@@ -5,36 +5,29 @@ This endpoint handles the discovery of content sources and creation of pipeline 
 using autonomous web scraping.
 """
 
-from typing import Dict, Any
 from src.shared.base_endpoint import BaseEndpoint
+from src.shared.pipeline_definitions import EndpointResponse
 from src.discover.pipeline import discover_content
 from src.shared.pipeline_definitions import PipelineStages
-from src.discover.models import DiscoveryRequest
+from src.discover.models import DiscoveryRequest, DiscoveryResult
 
 
 class DiscoverEndpoint(BaseEndpoint):
     """Endpoint for discovering content sources."""
     
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("DiscoverEndpoint")
     
-    def execute(self, discovery_params: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, discovery_params: DiscoveryRequest) -> EndpointResponse:
         """Execute the discovery process for given parameters."""
-        request = DiscoveryRequest(**discovery_params)
-        
-        self.logger.info(f"Processing discovery request for speaker: {request.speaker}")
-        self.logger.debug(f"Discovery parameters: {request.start_date} to {request.end_date}, {len(request.search_urls)} search URLs")
+        self.logger.info(f"Processing discovery request for speaker: {discovery_params.speaker}")
+        self.logger.debug(f"Discovery parameters: {discovery_params.start_date} to {discovery_params.end_date}, {len(discovery_params.search_urls)} search URLs")
         
         # Execute discovery pipeline - returns StageResult
-        stage_result = discover_content(request.model_dump())
+        stage_result = discover_content(discovery_params)
         
-        data = stage_result.artifact.get('data', {})
-        new_articles = data.get('new_articles', 0)
-        total_found = data.get('total_found', 0)
-        
-        self.logger.info(
-            f"Discovered {new_articles} new articles (from {total_found} total found) for speaker {request.speaker}"
-        )
+        # Parse artifact using DiscoveryResult model
+        discovery_result = DiscoveryResult.model_validate(stage_result.artifact)
         
         return self._create_success_response(
             result=stage_result.artifact,

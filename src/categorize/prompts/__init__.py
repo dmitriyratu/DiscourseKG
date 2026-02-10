@@ -1,8 +1,10 @@
 """Prompt management for categorization."""
 import yaml
 from pathlib import Path
+from typing import Tuple
 
-def load_prompts():
+
+def load_prompts() -> Tuple[str, str]:
     """Load prompts from YAML file."""
     prompts_file = Path(__file__).parent / "categorization.yaml"
     with open(prompts_file, 'r', encoding='utf-8') as f:

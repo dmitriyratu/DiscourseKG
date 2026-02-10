@@ -2,7 +2,8 @@
 
 from pydantic import BaseModel, Field, field_validator
 from enum import Enum
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
+from src.shared.models import StageOperationResult
 
 
 class TopicCategory(str, Enum):
@@ -162,21 +163,28 @@ class CategorizationOutput(BaseModel):
         return entities
 
 
-class CategorizationResult(BaseModel):
+class CategorizeStageMetadata(BaseModel):
+    """Metadata stored in pipeline state for categorize stage."""
+    content_type: Optional[str] = Field(None, description="Type of content (speech, debate, interview, etc.)")
+    model_used: str = Field(..., description="LLM model used for categorization")
+    input_tokens: int = Field(default=0, description="Input tokens used")
+    output_tokens: int = Field(default=0, description="Output tokens used")
+
+
+class CategorizationResult(StageOperationResult[CategorizationOutput]):
     """Result of categorization operation (artifact only, no metadata)."""
-    id: str = Field(..., description="Unique identifier for the categorized content")
-    success: bool = Field(..., description="Whether categorization was successful")
-    data: Optional[CategorizationOutput] = Field(None, description="Categorized content data")
-    error_message: Optional[str] = Field(None, description="Error message if categorization failed")
+    pass
 
 
 class CategorizeItem(BaseModel):
     """Input record required for categorization."""
-
     id: str = Field(..., description="Identifier of the pipeline item to categorize")
-    file_paths: Dict[str, str] = Field(default_factory=dict, description="Completed stage artifacts")
     latest_completed_stage: str = Field(..., description="Last stage completed for this item")
-    title: Optional[str] = Field(None, description="Optional title metadata")
-    content_date: Optional[str] = Field(None, description="Optional content date metadata")
+    stages: Dict[str, Any] = Field(default_factory=dict, description="Per-stage metadata")
     error_message: Optional[str] = Field(None, description="Previous error message if categorization is a retry")
-    failed_output: Optional[str] = Field(None, description="Previous failed output payload if retrying")
+    
+    def get_current_file_path(self) -> Optional[str]:
+        """Get file path for the latest completed stage"""
+        if self.latest_completed_stage and self.latest_completed_stage in self.stages:
+            return self.stages[self.latest_completed_stage].get('file_path')
+        return None

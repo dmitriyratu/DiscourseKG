@@ -1,4 +1,5 @@
-from typing import Dict, Any, Optional
+from enum import Enum
+from typing import Any, Dict, Optional, Type
 import json
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
@@ -9,7 +10,7 @@ from src.categorize.config import categorization_config
 from src.categorize.models import (
     TopicCategory, EntityType, SentimentLevel, 
     EntityMention, TopicMention, Subject, CategorizationInput, CategorizationOutput,
-    CategorizationResult, CategorizeContext
+    CategorizationResult, CategorizeContext, CategorizeStageMetadata
 )
 from src.utils.logging_utils import get_logger
 from src.shared.pipeline_definitions import PipelineStages, StageResult
@@ -27,8 +28,7 @@ class Categorizer:
     with entities and supporting quotes.
     """
     
-    def __init__(self):
-        
+    def __init__(self) -> None:
         llm_kwargs = {
             "model": categorization_config.OPENAI_MODEL,
             "temperature": categorization_config.OPENAI_TEMPERATURE,
@@ -72,7 +72,7 @@ class Categorizer:
             | llm_structured
         )
     
-    def _get_enum_guidance(self, enum_class) -> str:
+    def _get_enum_guidance(self, enum_class: Type[Enum]) -> str:
         """Generate guidance text from enum descriptions"""
         return "\n".join(f"  {item.value}: {item.description}" for item in enum_class)
     
@@ -174,10 +174,11 @@ class Categorizer:
         )
         
         # Extract metadata (for state updates only)
-        metadata = {
-            'model_used': categorization_config.OPENAI_MODEL, 
-            **token_usage
-        }
+        metadata = CategorizeStageMetadata(
+            model_used=categorization_config.OPENAI_MODEL,
+            input_tokens=token_usage.get('input_tokens', 0),
+            output_tokens=token_usage.get('output_tokens', 0)
+        ).model_dump()
         
         entities_count = len(categorization_data.entities)
         mentions_count = sum(len(entity.mentions) for entity in categorization_data.entities)

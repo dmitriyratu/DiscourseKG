@@ -2,31 +2,29 @@
 Scrape endpoint for collecting speaker transcripts.
 """
 
-from typing import Dict, Any
 from src.shared.base_endpoint import BaseEndpoint
+from src.shared.pipeline_definitions import EndpointResponse
 from src.scrape.pipeline import scrape_content
-from src.shared.pipeline_definitions import PipelineStages
-from src.scrape.models import ScrapeItem, ScrapeContext
+from src.shared.pipeline_definitions import PipelineStages, PipelineState
+from src.scrape.models import ScrapeContext
 
 
 class ScrapeEndpoint(BaseEndpoint):
     """Endpoint for scraping speaker transcripts."""
     
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("ScrapeEndpoint")
     
-    def execute(self, item: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, state: PipelineState) -> EndpointResponse:
         """Execute the scraping process for a single item."""
-        scrape_item = ScrapeItem(**item)
-        
         # Validate required fields
-        if not scrape_item.source_url:
-            raise ValueError(f"Missing source_url for item {scrape_item.id}")
+        if not state.source_url:
+            raise ValueError(f"Missing source_url for item {state.id}")
         
         # Build processing context
         processing_context = ScrapeContext(
-            id=scrape_item.id,
-            source_url=scrape_item.source_url
+            id=state.id,
+            source_url=state.source_url
         )
 
         # Execute scraping pipeline - returns StageResult

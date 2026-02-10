@@ -2,33 +2,30 @@
 Summarize endpoint for processing raw transcripts.
 """
 
-from typing import Dict, Any
-
 from src.shared.base_endpoint import BaseEndpoint
+from src.shared.pipeline_definitions import EndpointResponse
 from src.shared.data_loaders import DataLoader
 from src.summarize.pipeline import summarize_content
 from src.summarize.config import summarization_config
-from src.shared.pipeline_definitions import PipelineStages
-from src.summarize.models import SummarizeItem, SummarizeContext
+from src.shared.pipeline_definitions import PipelineStages, PipelineState
+from src.summarize.models import SummarizeContext, SummarizationResult
 
 
 class SummarizeEndpoint(BaseEndpoint):
     """Endpoint for summarizing raw transcripts."""
     
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("SummarizeEndpoint")
     
-    def execute(self, item: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, state: PipelineState) -> EndpointResponse:
         """Execute the summarization process for a single item."""
-        summarize_item = SummarizeItem(**item)
-
         # Load scrape artifact
         data_loader = DataLoader()
-        current_file_path = summarize_item.file_paths.get(summarize_item.latest_completed_stage)
+        current_file_path = state.get_current_file_path()
         if not current_file_path:
             raise ValueError(
-                f"No file path found for latest completed stage {summarize_item.latest_completed_stage} "
-                f"for item {summarize_item.id}"
+                f"No file path found for latest completed stage {state.latest_completed_stage} "
+                f"for item {state.id}"
             )
 
         # Validate content
@@ -38,7 +35,7 @@ class SummarizeEndpoint(BaseEndpoint):
 
         # Build processing context
         processing_context = SummarizeContext(
-            id=summarize_item.id,
+            id=state.id,
             text=scrape,
             target_tokens=summarization_config.TARGET_SUMMARY_TOKENS
         )
@@ -46,8 +43,11 @@ class SummarizeEndpoint(BaseEndpoint):
         # Execute summarization pipeline - returns StageResult
         stage_result = summarize_content(processing_context)
         
+        # Parse artifact using SummarizationResult model
+        summarization_result = SummarizationResult.model_validate(stage_result.artifact)
+        
         self.logger.debug(
-            f"Successfully summarized item {summarize_item.id} - {stage_result.artifact['data']['summary_word_count']} words"
+            f"Successfully summarized item {state.id} - {summarization_result.data.summary_word_count} words"
         )
 
         return self._create_success_response(

@@ -1,6 +1,7 @@
 """Compact rich console logging for discovery agent visibility."""
 
 from datetime import date, datetime
+from typing import Dict, List, Optional, Union
 
 from rich.console import Console
 from rich.panel import Panel
@@ -15,11 +16,11 @@ console = Console()
 
 class DiscoveryLogger:
     """Lightweight logger for discovery agent thinking visibility."""
-    
-    def __init__(self):
+
+    def __init__(self) -> None:
         self.seen_urls: set[str] = set()
-    
-    def page_start(self, url: str, page_num: int, action: NavigationAction | None) -> None:
+
+    def page_start(self, url: str, page_num: int, action: Optional[NavigationAction]) -> None:
         """Log page processing start."""
         action_str = self._format_action(action)
         console.print(Panel(
@@ -31,11 +32,11 @@ class DiscoveryLogger:
         self,
         page_discoverer: PageDiscoverer,
         url: str,
-        action: NavigationAction | None = None,
+        action: Optional[NavigationAction] = None,
         reuse_session: bool = False,
-    ) -> tuple[PageExtraction, int, dict[str, int | float] | None]:
+    ) -> tuple[PageExtraction, int, Optional[Dict[str, Union[int, float]]]]:
         """Wrapper around PageDiscoverer.observe() that captures token usage."""
-        llm_info: dict[str, int | float] | None = None
+        llm_info: Optional[Dict[str, Union[int, float]]] = None
         
         def log_result(result, extraction_strategy, llm_time: float):
             nonlocal llm_info
@@ -54,11 +55,11 @@ class DiscoveryLogger:
         extraction, markdown_len = await page_discoverer.observe(url, action, reuse_session, result_callback=log_result)
         return extraction, markdown_len, llm_info
     
-    def extraction_result(self, articles: list[Article], valid: list[Article],
-                          next_action: NavigationAction | None, start_dt: date, end_dt: date,
-                          extraction_issues: list[str] | None = None,
-                          dropped: list[Article] | None = None,
-                          llm_info: dict[str, int | float] | None = None) -> None:
+    def extraction_result(self, articles: List[Article], valid: List[Article],
+                          next_action: Optional[NavigationAction], start_dt: date, end_dt: date,
+                          extraction_issues: Optional[List[str]] = None,
+                          dropped: Optional[List[Article]] = None,
+                          llm_info: Optional[Dict[str, Union[int, float]]] = None) -> None:
         """Log extraction results with article summary."""
         new_articles = [a for a in articles if a.url not in self.seen_urls]
         self.seen_urls.update(a.url for a in articles)
@@ -73,8 +74,12 @@ class DiscoveryLogger:
             summary.append(": ", style="white")
         summary.append(f"{len(articles)}", style="white")
         summary.append(" articles", style="white")
-        if len(new_articles) != len(articles):
-            summary.append(f" ({len(new_articles)} new)", style="dim")
+        new_count = len(new_articles)
+        dup_count = len(articles) - new_count
+        if dup_count > 0:
+            summary.append(f" ({new_count} new, {dup_count} duplicates)", style="dim")
+        else:
+            summary.append(f" ({new_count} new)", style="dim")
 
         summary.append(f"\nTarget Range [{start_dt} - {end_dt}]: ", style="white")
         summary.append(f"{len(valid)}", style="green bold")
@@ -127,17 +132,32 @@ class DiscoveryLogger:
             
             console.print(table)
     
-    def stopping(self, reason: str, total_collected: int, pages_processed: int) -> None:
+    def stopping(
+        self,
+        reason: str,
+        total_collected: int,
+        pages_processed: int,
+        start_dt: Optional[date] = None,
+        end_dt: Optional[date] = None,
+        all_articles: Optional[List[Article]] = None,
+    ) -> None:
         """Log stop condition."""
-        console.print(Panel(
-            f"[red bold]Stopping:[/red bold] {reason}\n"
-            f"[white]Pages: {pages_processed} | Articles: [cyan bold]{total_collected}[/cyan bold][/white]",
-            border_style="red"
-        ))
+        summary = Text()
+        summary.append("Stopping: ", style="red bold")
+        summary.append(f"{reason}\n", style="white")
+        summary.append(f"Pages: {pages_processed} | Articles: ", style="white")
+        summary.append(f"{total_collected}\n", style="cyan bold")
+        if all_articles:
+            dr = self._get_date_range(all_articles)
+            if dr:
+                summary.append(f"Discovered Range [{dr['min']} - {dr['max']}]: {dr['count']} articles\n", style="white")
+        if start_dt and end_dt:
+            summary.append(f"Target Range [{start_dt} - {end_dt}]: {total_collected} articles", style="white")
+        console.print(Panel(summary, border_style="red"))
     
-    def complete(self, valid_articles: list[Article], all_articles: list[Article], pages: int, 
-                  start_dt: date, end_dt: date) -> None:
-        """Log final summary."""
+    def complete(self, valid_articles: List[Article], all_articles: List[Article], pages: int,
+                  start_dt: date, end_dt: date, duplicates_skipped: int = 0) -> None:
+        """Log final summary (per-URL agent run)."""
         all_date_range = self._get_date_range(all_articles)
         summary = Text()
         summary.append("Complete", style="green bold")
@@ -149,15 +169,49 @@ class DiscoveryLogger:
         else:
             summary.append("\nDiscovered Range: ", style="white")
             summary.append("0", style="white")
-            summary.append(" articles", style="white")        
-        
+            summary.append(" articles", style="white")
+
         summary.append(f"\nTarget Range [{start_dt} - {end_dt}]: ", style="white")
         summary.append(f"{len(valid_articles)}", style="green bold")
-        summary.append(" articles", style="white")
+        summary.append(" new articles", style="white")
+        if duplicates_skipped:
+            summary.append(f" ({duplicates_skipped} duplicates skipped)", style="dim")
         
         console.print(Panel(summary, border_style="green"))
+
+    def aggregate_complete(
+        self,
+        discovered: List,
+        total_found: int,
+        total_all: int,
+        duplicates_skipped: int,
+        processing_time: float,
+        start_date: str,
+        end_date: str,
+        date_range_min: Optional[str] = None,
+        date_range_max: Optional[str] = None,
+    ) -> None:
+        """Log final discovery summary (aggregate across URLs)."""
+        dates = [date_range_min, date_range_max] if date_range_min and date_range_max else []
+        summary = Text()
+        summary.append("Complete", style="green bold")
+        if dates:
+            summary.append(f"\nDiscovered Range [{min(dates)} - {max(dates)}]: ", style="white")
+            summary.append(f"{total_all}", style="white")
+        else:
+            summary.append("\nDiscovered Range: ", style="white")
+            summary.append(f"{total_all}", style="white")
+        summary.append(" articles", style="white")
+        summary.append(f"\nTarget Range [{start_date} - {end_date}]: ", style="white")
+        summary.append(f"{total_found}", style="green bold")
+        summary.append(" articles", style="white")
+        summary.append(f" ({len(discovered)} new", style="dim")
+        if duplicates_skipped:
+            summary.append(f", {duplicates_skipped} duplicates skipped", style="dim")
+        summary.append(f") ({processing_time}s)", style="dim")
+        console.print(Panel(summary, border_style="green"))
     
-    def _get_date_range(self, articles: list[Article]) -> dict[str, str | int] | None:
+    def _get_date_range(self, articles: List[Article]) -> Optional[Dict[str, Union[str, int]]]:
         """Get min-max date range from articles with valid dates."""
         dates = []
         for article in articles:
@@ -174,7 +228,7 @@ class DiscoveryLogger:
             "count": len(dates)
         }
     
-    def _format_action(self, action: NavigationAction | None) -> str:
+    def _format_action(self, action: Optional[NavigationAction]) -> str:
         if not action:
             return "None"
         if action.type == "scroll":

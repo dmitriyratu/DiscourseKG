@@ -5,7 +5,7 @@ This module handles data loading from multiple pipeline stages,
 stitching metadata, and coordinating Neo4j ingestion.
 """
 
-from typing import Dict, Any, List
+from typing import Any, Dict, List, Optional
 from pathlib import Path
 import json
 from neo4j import GraphDatabase
@@ -14,6 +14,11 @@ from src.shared.data_loaders import DataLoader
 from src.graph.models import GraphResult, GraphData, GraphContext
 from src.speakers.models import SpeakerRegistry
 from src.shared.pipeline_definitions import PipelineStages, StageResult
+from src.shared.models import ContentType, StageOperationResult
+from src.categorize.models import CategorizationResult
+from src.scrape.models import ScrapingResult
+from src.summarize.models import SummarizationResult
+from src.categorize.models import CategorizeStageMetadata
 from src.graph.config import graph_config
 from src.config import config
 from src.utils.logging_utils import get_logger
@@ -28,20 +33,20 @@ class Grapher:
     Handles data loading, preprocessing, and Neo4j ingestion.
     """
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.data_loader = DataLoader()
-        self.driver = None
+        self.driver: Any = None
         logger.debug("Grapher initialized")
-    
-    def __enter__(self):
+
+    def __enter__(self) -> "Grapher":
         """Context manager entry - establish Neo4j connection."""
         self.driver = GraphDatabase.driver(
             graph_config.NEO4J_URI,
             auth=(graph_config.NEO4J_USER, graph_config.NEO4J_PASSWORD)
         )
         return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Context manager exit - close Neo4j connection."""
         if self.driver:
             self.driver.close()
@@ -49,14 +54,15 @@ class Grapher:
     def load_graph(self, processing_context: GraphContext) -> StageResult:
         """Load data into Neo4j from processing context."""
         id = processing_context.id
-        file_paths = processing_context.file_paths
+        # Convert stages to file_paths dict for data loading
+        file_paths = {stage: meta.get('file_path') for stage, meta in processing_context.stages.items()}
         speaker = processing_context.speaker
         
         logger.debug(f"Starting graph loading for {id}")
         
         # Load and stitch data from multiple stages
         categorization_data = self._load_categorization(file_paths)
-        communication_data = self._load_communication(file_paths)
+        communication_data = self._load_communication(file_paths, processing_context.stages, processing_context.title, processing_context.publication_date)
         speaker_data = self._load_speaker(speaker)
         
         # Preprocess entities
@@ -79,19 +85,32 @@ class Grapher:
     # Data Loading Methods
     # ========================
     
-    def _load_categorization(self, file_paths: Dict[str, str]) -> list:
+    def _load_categorization(self, file_paths: Dict[str, str]) -> List[Dict[str, Any]]:
         """Load categorization data (entities)."""
         categorize_path = file_paths.get(PipelineStages.CATEGORIZE.value)
         output = self.data_loader.load(categorize_path)
-        data = output.get('data', {})
-        return data.get('entities')
+        categorization_result = CategorizationResult.model_validate(output)
+        return categorization_result.data.entities if categorization_result.data else []
     
-    def _load_communication(self, file_paths: Dict[str, str]) -> Dict[str, Any]:
-        """Load communication data by stitching stage outputs."""
+    def _load_communication(self, file_paths: Dict[str, str], stages: Dict[str, Any], title: Optional[str] = None, publication_date: Optional[str] = None) -> Dict[str, Any]:
+        """Load communication data by stitching stage outputs and metadata."""
         scrape_path = file_paths.get(PipelineStages.SCRAPE.value)
         scrape_output = self.data_loader.load(scrape_path)
-        scrape_data = scrape_output.get('data', {})
-        scrape_content = scrape_data.get(PipelineStages.SCRAPE.value)
+        scraping_result = ScrapingResult.model_validate(scrape_output)
+        scrape_content = scraping_result.data.scrape if scraping_result.data else ''
+
+        # Get title and publication_date from top-level state
+        title = title or 'Unknown'
+        content_date = publication_date or 'Unknown'
+        
+        # Get content_type from categorize stage metadata (if available)
+        categorize_stage = stages.get(PipelineStages.CATEGORIZE.value, {})
+        categorize_metadata_dict = categorize_stage.get('metadata', {}) if isinstance(categorize_stage, dict) else {}
+        if categorize_metadata_dict:
+            categorize_metadata = CategorizeStageMetadata.model_validate(categorize_metadata_dict)
+            content_type = categorize_metadata.content_type or ContentType.UNKNOWN.value
+        else:
+            content_type = ContentType.UNKNOWN.value
 
         # Load from summarize stage for compression stats
         summarize_path = file_paths.get(PipelineStages.SUMMARIZE.value)
@@ -100,21 +119,22 @@ class Grapher:
         
         if summarize_path:
             summarize_output = self.data_loader.load(summarize_path)
-            summarize_data = summarize_output.get('data', {})
-            summary_word_count = summarize_data.get('summary_word_count')
-            original_word_count = summarize_data.get('original_word_count')
-            compression_ratio = summarize_data.get('compression_ratio', 1.0)
-            was_summarized = (
-                bool(summary_word_count is not None and original_word_count is not None)
-                and summary_word_count != original_word_count
-            )
+            summarization_result = SummarizationResult.model_validate(summarize_output)
+            if summarization_result.data:
+                summary_word_count = summarization_result.data.summary_word_count
+                original_word_count = summarization_result.data.original_word_count
+                compression_ratio = summarization_result.data.compression_ratio
+                was_summarized = (
+                    summary_word_count is not None 
+                    and original_word_count is not None
+                    and summary_word_count != original_word_count
+                )
 
         return {
-            'id': scrape_output.get('id'),
-            'title': scrape_data.get('title'),
-            'content_type': scrape_data.get('content_type', 'unknown'),
-            'content_date': scrape_data.get('content_date', 'Unknown'),
-            'source_url': scrape_data.get('source_url'),
+            'id': scraping_result.id,
+            'title': title,
+            'content_type': content_type,
+            'content_date': content_date,
             'full_text': scrape_content,
             'word_count': len(scrape_content.split()) if scrape_content else 0,
             'was_summarized': was_summarized,
@@ -225,7 +245,7 @@ class Grapher:
             logger.error(f"Neo4j load failed for {id}: {str(e)}")
             raise
     
-    def _load_data(self, session, data: Dict[str, Any]) -> Dict[str, int]:
+    def _load_data(self, session: Any, data: Dict[str, Any]) -> Dict[str, int]:
         """Load all data into Neo4j and return statistics."""
         stats = self._create_stats()
         
@@ -252,7 +272,7 @@ class Grapher:
         
         return stats
     
-    def _create_constraints(self, session):
+    def _create_constraints(self, session: Any) -> None:
         """Create Neo4j constraints (idempotent)."""
         constraints = [
             "CREATE CONSTRAINT speaker_name_id IF NOT EXISTS FOR (s:Speaker) REQUIRE s.name_id IS UNIQUE",
@@ -266,7 +286,7 @@ class Grapher:
             except Exception as e:
                 logger.debug(f"Constraint already exists or error: {e}")
     
-    def _load_speaker_node(self, session, speaker: Dict[str, Any]) -> Dict[str, int]:
+    def _load_speaker_node(self, session: Any, speaker: Dict[str, Any]) -> Dict[str, int]:
         """Load Speaker node."""
         query = """
         MERGE (s:Speaker {name_id: $name_id})
@@ -282,7 +302,7 @@ class Grapher:
         result = session.run(query, **speaker)
         return self._create_stats(nodes=1 if result.single() else 0)
     
-    def _load_communication_node(self, session, communication: Dict[str, Any], speaker_name_id: str) -> Dict[str, int]:
+    def _load_communication_node(self, session: Any, communication: Dict[str, Any], speaker_name_id: str) -> Dict[str, int]:
         """Load Communication node and DELIVERED relationship."""
         query = """
         MATCH (s:Speaker {name_id: $speaker_name_id})
@@ -306,7 +326,7 @@ class Grapher:
         
         return self._create_stats(nodes=1 if record else 0, relationships=1 if record else 0)
     
-    def _load_entities_and_mentions(self, session, comm_id: str, entities: List[Dict[str, Any]]) -> Dict[str, int]:
+    def _load_entities_and_mentions(self, session: Any, comm_id: str, entities: List[Dict[str, Any]]) -> Dict[str, int]:
         """Load Entities, Mentions, Subjects and their relationships."""
         nodes_created = 0
         relationships_created = 0
@@ -329,7 +349,7 @@ class Grapher:
         
         return self._create_stats(nodes=nodes_created, relationships=relationships_created)
     
-    def _load_entity_node(self, session, entity: Dict[str, Any]) -> Dict[str, int]:
+    def _load_entity_node(self, session: Any, entity: Dict[str, Any]) -> Dict[str, int]:
         """Load Entity node."""
         query = """
         MERGE (e:Entity {canonical_name: $entity_name})
@@ -345,7 +365,7 @@ class Grapher:
         
         return self._create_stats(nodes=1 if result.single() else 0)
     
-    def _load_mention_and_subjects(self, session, comm_id: str, entity_name: str, 
+    def _load_mention_and_subjects(self, session: Any, comm_id: str, entity_name: str,
                                    mention: Dict[str, Any]) -> Dict[str, int]:
         """Load Mention node with Subjects and create relationships."""
         topic = mention.get('topic', '')
@@ -388,7 +408,7 @@ class Grapher:
         
         return self._create_stats(nodes=nodes_created, relationships=relationships_created)
     
-    def _load_subject_node(self, session, mention_id: str, subject: Dict[str, Any]) -> Dict[str, int]:
+    def _load_subject_node(self, session: Any, mention_id: str, subject: Dict[str, Any]) -> Dict[str, int]:
         """Load Subject node and HAS_SUBJECT relationship."""
         query = """
         MATCH (m:Mention) WHERE elementId(m) = $mention_id

@@ -6,12 +6,14 @@ import logging
 import sys
 import inspect
 from pathlib import Path
+from typing import Optional
+
 import pyprojroot
 from tqdm.contrib.logging import logging_redirect_tqdm
 from src.config import config
 
 
-def get_logger(name: str = None, level: logging = None):
+def get_logger(name: Optional[str] = None, level: Optional[int] = None) -> logging.Logger:
     """Set up a logger with automatic naming and tqdm integration."""
     if name is None:
         # Get caller's module name
