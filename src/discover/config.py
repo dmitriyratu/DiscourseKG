@@ -10,7 +10,6 @@ load_dotenv()
 
 class DiscoveryConfig(BaseModel):
     """Configuration for the discovery agent."""
-    MIN_DATE_SCORE: int = Field(default=2, description="Minimum date score to accept an article")
     HEADLESS: bool = Field(default=False, description="Run browser in headless mode")
     MAX_PAGES: int = Field(default=5, description="Maximum pages to process per search URL")
     

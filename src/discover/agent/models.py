@@ -1,7 +1,7 @@
 """Pydantic models for article extraction and navigation."""
 
 from enum import Enum
-from typing import Literal, Optional
+from typing import Optional
 from pydantic import BaseModel, Field
 
 
@@ -59,6 +59,12 @@ class ArticleExtraction(BaseModel):
     date_candidates: list[DateCandidate] = Field(default_factory=list, description="Date candidates extracted from the article")
 
 
+class ActionType(str, Enum):
+    """Navigation action type."""
+    CLICK = "click"
+    SCROLL = "scroll"
+
+
 class Article(BaseModel):
     """Final article with computed date metadata."""
     title: str = Field(..., description="Title of the article")
@@ -71,12 +77,12 @@ class Article(BaseModel):
 
 class NavigationAction(BaseModel):
     """Action for navigating to more content."""
-    type: Literal["click", "scroll"]
+    type: ActionType
     value: Optional[str] = Field(None, description="CSS selector for click, not used for scroll")
 
 
 class PageExtraction(BaseModel):
-    """LLM extraction result from a page. Articles are ArticleExtraction before voting, Article after."""
-    articles: list[ArticleExtraction | Article] = Field(default_factory=list, description="Articles extracted from the page")
-    next_action: Optional[NavigationAction] = Field(None, description="Next action to take")
+    """LLM extraction result from a page."""
+    articles: list[Article] = Field(default_factory=list, description="Articles extracted from the page")
+    next_action: NavigationAction = Field(default_factory=lambda: NavigationAction(type=ActionType.SCROLL), description="Click (pagination) or scroll")
     extraction_issues: list[str] = Field(default_factory=list, description="Issues with the extraction")

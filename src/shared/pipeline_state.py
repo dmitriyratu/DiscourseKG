@@ -75,6 +75,10 @@ class PipelineStateManager:
         
         return state
     
+    def get_all_states(self) -> List[Dict[str, Any]]:
+        """Return all pipeline state records."""
+        return self._read_all_states()
+
     def get_by_source_url(self, source_url: str) -> Optional[PipelineState]:
         """Check if source URL already exists in pipeline"""
         states = self._read_all_states()

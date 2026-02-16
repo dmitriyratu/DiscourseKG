@@ -11,8 +11,9 @@ import time
 from datetime import datetime
 from typing import List
 
+from src.discover.agent.date_voter import DateVoter
 from src.discover.agent.discovery_agent import DiscoveryAgent
-from src.discover.agent.discovery_logger import DiscoveryLogger
+from src.discover.agent.discovery_logger import DiscoveryLogger, get_existing_source_urls
 from src.discover.agent.models import Article
 from src.discover.config import discovery_config, DiscoveryConfig
 from src.discover.models import DiscoveredArticle, DiscoveryData, DiscoveryResult, DiscoveryRequest
@@ -42,10 +43,10 @@ class Discoverer:
         url_hash = hashlib.md5(article.url.encode()).hexdigest()[:6]
         return f"{article.publication_date}-{title_slug}-{url_hash}"
     
-    async def _run_agent_async(self, search_url: str, start_date: str, end_date: str) -> tuple:
+    async def _run_agent_async(self, search_url: str, start_date: str, end_date: str, existing_urls: set) -> tuple:
         """Run the discovery agent asynchronously."""
-        agent = DiscoveryAgent(headless=self.config.HEADLESS)
-        return await agent.run(search_url, start_date, end_date)
+        agent = DiscoveryAgent(config=self.config)
+        return await agent.run(search_url, start_date, end_date, existing_urls=existing_urls)
     
     def discover_content(self, discovery_params: DiscoveryRequest) -> StageResult:
         """Discover content sources using the autonomous agent."""
@@ -65,11 +66,12 @@ class Discoverer:
         total_all = 0
 
         end_date = discovery_params.end_date or datetime.now().strftime("%Y-%m-%d")
+        existing_urls = get_existing_source_urls(speaker=discovery_params.speaker)
         for search_url in discovery_params.search_urls:
             logger.info(f"Searching: {search_url}")
 
             try:
-                articles, all_articles = asyncio.run(self._run_agent_async(search_url, discovery_params.start_date, end_date))
+                articles, all_articles = asyncio.run(self._run_agent_async(search_url, discovery_params.start_date, end_date, existing_urls))
                 total_found += len(articles)
                 total_all += len(all_articles)
                 for a in all_articles:
@@ -77,7 +79,7 @@ class Discoverer:
                         all_dates.append(a.publication_date)
                 
                 for article in articles:
-                    if article.date_score is None or article.date_score < self.config.MIN_DATE_SCORE:
+                    if article.date_score is None or article.date_score < DateVoter.THRESHOLD:
                         continue
                     
                     if manager.get_by_source_url(article.url):
@@ -99,6 +101,7 @@ class Discoverer:
                     )
                     
                     manager.create_state(discovered, run_timestamp, file_path, search_url)
+                    existing_urls.add(article.url)
                     all_discovered.append(discovered)
                     logger.debug(f"Discovered: {discovered.id}")
                     
