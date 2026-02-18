@@ -1,59 +1,51 @@
 """
-Scraper implementation for DiscourseKG platform.
+Scraper for collecting speaker transcripts from web sources.
 
-This class handles the scraping of speaker transcripts from web sources.
-Currently uses mock data generation - will be replaced with real scraping.
+Uses domain-specific extractors (cached or LLM-generated) to extract
+primary content from HTML.
 """
 
-from typing import Dict, Any
-from tests.transcript_generator import generate_test_transcript
-from src.utils.logging_utils import get_logger
+from src.scrape.extractor_manager import ExtractorManager
 from src.scrape.models import ScrapingResult, ScrapingData, ScrapeContext
 from src.shared.pipeline_definitions import StageResult
-from src.shared.models import ContentType
-
-logger = get_logger(__name__)
 
 
 class Scraper:
     """
-    Scraper implementation for collecting speaker content.
-    
-    This class handles the scraping of content from web sources for the
-    knowledge graph platform. Currently uses mock data generation but
-    will be replaced with real web scraping functionality.
+    Scrapes content from web sources using domain-specific extractors.
+
+    Delegates extractor resolution to ExtractorManager, fetches HTML,
+    runs extractor, and returns StageResult.
     """
-    
+
     def __init__(self) -> None:
-        logger.debug("Scraper initialized")
-    
+        self.extractor_manager = ExtractorManager()
+
     def scrape_content(self, processing_context: ScrapeContext) -> StageResult:
         """Scrape content from the provided processing context."""
-        logger.debug(f"Starting scraping for URL: {processing_context.source_url}")
-        
-        # TODO: Replace with real web scraping
-        # For now, generate mock data (content_type will be determined by categorize stage)
-        scrape_data = generate_test_transcript(
-            {'id': processing_context.id, 'source_url': processing_context.source_url}, 
-            ContentType.SPEECH.value  # Default for mock - real scraper won't determine type
-        )
-        
-        return self._create_result(scrape_data)
-    
-    def _create_result(self, scrape_data: Dict[str, Any]) -> StageResult:
-        """Helper to create StageResult."""
-        scrape_text = scrape_data['scrape']
+        url = processing_context.source_url
+        html = self.extractor_manager.fetch_html(url)
+
+
+        extract_function = self.extractor_manager.get_or_create_extractor(url)
+        scrape_text = extract_function(html)
+
+        return self._create_result(processing_context.id, scrape_text)
+
+    def _create_result(self, id: str, scrape_text: str) -> StageResult:
+        """Helper to create StageResult with separated artifact and metadata."""
         scraping_data = ScrapingData(
             scrape=scrape_text,
-            word_count=len(scrape_text.split()) if scrape_text else 0
+            word_count=len(scrape_text.split()),
         )
-        
         artifact = ScrapingResult(
-            id=scrape_data['id'],
-            success=True,
-            data=scraping_data,
+            id=id, 
+            success=True, 
+            data=scraping_data, 
             error_message=None
+            )
+
+        return StageResult(
+            artifact=artifact.model_dump(), 
+            metadata={}
         )
-        
-        logger.debug(f"Successfully scraped: {artifact.id} - {scraping_data.word_count} words")
-        return StageResult(artifact=artifact.model_dump(), metadata={})

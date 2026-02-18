@@ -5,12 +5,6 @@ from typing import Optional
 from src.shared.models import StageOperationResult
 
 
-class ScrapeItem(BaseModel):
-    """Input record required for scraping."""
-    id: str = Field(..., description="Identifier of the pipeline item to scrape")
-    source_url: str = Field(..., description="URL to scrape content from")
-
-
 class ScrapeContext(BaseModel):
     """Processing context for scraping operation."""
     id: str = Field(..., description="Unique identifier for the item")
@@ -24,6 +18,17 @@ class ScrapingData(BaseModel):
 
 
 class ScrapingResult(StageOperationResult[ScrapingData]):
-    """Result of scraping operation (artifact only, no metadata)."""
+    """Result of scraping operation."""
     pass
+
+
+class DomainInfo(BaseModel):
+    """Metadata for a domain extractor."""
+    extractor_name: str = Field(..., description="Name of the extractor module in domains/")
+    instructions: Optional[str] = Field(None, description="Custom LLM instructions for generation")
+
+
+class ExtractorScript(BaseModel):
+    """Structured output schema for LLM-generated extractor code."""
+    code: str
 

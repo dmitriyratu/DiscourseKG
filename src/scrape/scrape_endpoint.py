@@ -17,9 +17,6 @@ class ScrapeEndpoint(BaseEndpoint):
     
     def execute(self, state: PipelineState) -> EndpointResponse:
         """Execute the scraping process for a single item."""
-        # Validate required fields
-        if not state.source_url:
-            raise ValueError(f"Missing source_url for item {state.id}")
         
         # Build processing context
         processing_context = ScrapeContext(
@@ -30,7 +27,6 @@ class ScrapeEndpoint(BaseEndpoint):
         # Execute scraping pipeline - returns StageResult
         stage_result = scrape_content(processing_context)
 
-        
         return self._create_success_response(
             result=stage_result.artifact,
             stage=PipelineStages.SCRAPE.value,

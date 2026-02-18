@@ -23,6 +23,7 @@ class GraphContext(BaseModel):
     speaker: str = Field(..., description="Speaker name for loading from speakers.json")
     title: Optional[str] = Field(None, description="Article title")
     publication_date: Optional[str] = Field(None, description="Publication date (YYYY-MM-DD)")
+    source_url: Optional[str] = Field(None, description="Article URL")
 
 
 class GraphItem(BaseModel):

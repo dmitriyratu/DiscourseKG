@@ -23,7 +23,8 @@ class GraphEndpoint(BaseEndpoint):
             stages=state.stages,
             speaker=state.speaker,
             title=state.title,
-            publication_date=state.publication_date
+            publication_date=state.publication_date,
+            source_url=state.source_url,
         )
 
         # Execute graph loading pipeline - returns StageResult

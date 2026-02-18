@@ -1,0 +1,174 @@
+"""Assembles graph data from pipeline stage outputs."""
+
+import json
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from src.config import config
+from src.categorize.models import CategorizationResult, CategorizeStageMetadata
+from src.graph.config import graph_config
+from src.graph.models import GraphContext
+from src.shared.data_loaders import DataLoader
+from src.shared.models import ContentType
+from src.shared.pipeline_definitions import PipelineStages
+from src.scrape.models import ScrapingResult
+from src.speakers.models import SpeakerRegistry
+from src.summarize.models import SummarizationResult
+from src.utils.logging_utils import get_logger
+
+logger = get_logger(__name__)
+
+
+class GraphDataAssembler:
+    """Loads and stitches data from pipeline stages for Neo4j ingestion."""
+
+    def __init__(self) -> None:
+        self.data_loader = DataLoader()
+
+    def assemble(self, context: GraphContext) -> Dict[str, Any]:
+        """Load from all stages, preprocess, and return Neo4j-ready context."""
+        file_paths = {
+            stage: (meta.get("file_path") if isinstance(meta, dict) else getattr(meta, "file_path", None))
+            for stage, meta in context.stages.items()
+        }
+
+        categorization_data = self._load_categorization(file_paths)
+        communication_data = self._load_communication(file_paths, context)
+        speaker_data = self._load_speaker(context.speaker)
+        preprocessed_entities = self._preprocess_entities(categorization_data)
+
+        return {
+            "id": communication_data["id"],
+            "speaker": speaker_data,
+            "communication": communication_data,
+            "entities": preprocessed_entities,
+        }
+
+    def _load_categorization(self, file_paths: Dict[str, str]) -> List[Dict[str, Any]]:
+        """Load categorization data (entities)."""
+        categorize_path = file_paths.get(PipelineStages.CATEGORIZE.value)
+        output = self.data_loader.load(categorize_path)
+        categorization_result = CategorizationResult.model_validate(output)
+        if not categorization_result.data:
+            return []
+        return [e.model_dump() for e in categorization_result.data.entities]
+
+    def _load_communication(
+        self, file_paths: Dict[str, str], context: GraphContext
+    ) -> Dict[str, Any]:
+        """Load communication data by stitching stage outputs and metadata."""
+        scrape_path = file_paths.get(PipelineStages.SCRAPE.value)
+        scrape_output = self.data_loader.load(scrape_path)
+        scraping_result = ScrapingResult.model_validate(scrape_output)
+        scrape_content = scraping_result.data.scrape if scraping_result.data else ""
+
+        title = context.title or "Unknown"
+        content_date = context.publication_date or "Unknown"
+
+        categorize_stage = context.stages.get(PipelineStages.CATEGORIZE.value, {})
+        categorize_metadata_dict = categorize_stage.get("metadata", {}) if isinstance(categorize_stage, dict) else {}
+        if categorize_metadata_dict:
+            categorize_metadata = CategorizeStageMetadata.model_validate(categorize_metadata_dict)
+            content_type = categorize_metadata.content_type or ContentType.UNKNOWN.value
+        else:
+            content_type = ContentType.UNKNOWN.value
+
+        summarize_path = file_paths.get(PipelineStages.SUMMARIZE.value)
+        was_summarized = False
+        compression_ratio = 1.0
+
+        if summarize_path:
+            summarize_output = self.data_loader.load(summarize_path)
+            summarization_result = SummarizationResult.model_validate(summarize_output)
+            if summarization_result.data:
+                summary_word_count = summarization_result.data.summary_word_count
+                original_word_count = summarization_result.data.original_word_count
+                compression_ratio = summarization_result.data.compression_ratio
+                was_summarized = (
+                    summary_word_count is not None
+                    and original_word_count is not None
+                    and summary_word_count != original_word_count
+                )
+
+        return {
+            "id": scraping_result.id,
+            "title": title,
+            "content_type": content_type,
+            "content_date": content_date,
+            "source_url": context.source_url or "",
+            "full_text": scrape_content,
+            "word_count": len(scrape_content.split()) if scrape_content else 0,
+            "was_summarized": was_summarized,
+            "compression_ratio": compression_ratio,
+        }
+
+    def _load_speaker(self, speaker_name: str) -> Dict[str, Any]:
+        """Load speaker metadata from speakers.json."""
+        if not speaker_name:
+            raise ValueError("Speaker name is required")
+
+        speakers_file = Path(config.PROJECT_ROOT) / "data" / config.ENVIRONMENT / "speakers.json"
+        with open(speakers_file) as f:
+            speakers_data = json.load(f)
+
+        speakers_registry = SpeakerRegistry(**speakers_data)
+        speaker_obj = speakers_registry.speakers[speaker_name]
+
+        industry = getattr(speaker_obj.industry, "value", speaker_obj.industry)
+        return {
+            "name_id": speaker_name,
+            "name": speaker_obj.display_name,
+            "display_name": speaker_obj.display_name,
+            "role": speaker_obj.role,
+            "organization": speaker_obj.organization,
+            "industry": industry,
+            "region": speaker_obj.region,
+        }
+
+    def _preprocess_entities(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Preprocess entities for Neo4j loading."""
+        try:
+            entities = self._compute_aggregated_sentiment(entities)
+            entities = self._validate_entities(entities)
+            return entities
+        except Exception as e:
+            logger.error(f"Entity preprocessing failed: {str(e)}")
+            raise
+
+    def _compute_aggregated_sentiment(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Compute aggregated sentiment for each topic mention from its subjects."""
+        for entity in entities:
+            for mention in entity.get("mentions", []):
+                subjects = mention.get("subjects", [])
+                if not subjects:
+                    mention["aggregated_sentiment"] = {}
+                    continue
+
+                sentiment_counts = {}
+                for subject in subjects:
+                    sentiment_value = subject.get("sentiment")
+                    if sentiment_value:
+                        sentiment_counts[sentiment_value] = sentiment_counts.get(sentiment_value, 0) + 1
+
+                total_subjects = len(subjects)
+                mention["aggregated_sentiment"] = {
+                    sentiment: {
+                        "count": count,
+                        "prop": round(count / total_subjects, graph_config.DECIMAL_PRECISION),
+                    }
+                    for sentiment, count in sentiment_counts.items()
+                }
+
+        return entities
+
+    def _validate_entities(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Validate entity data before Neo4j loading."""
+        for entity in entities:
+            if not entity.get("entity_name"):
+                raise ValueError(f"Entity missing entity_name: {entity}")
+            if not entity.get("entity_type"):
+                raise ValueError(f"Entity missing entity_type: {entity}")
+            if not entity.get("mentions"):
+                raise ValueError(f"Entity has no mentions: {entity['entity_name']}")
+
+        return entities
