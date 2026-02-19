@@ -14,6 +14,7 @@ from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from src.scrape.config import scraper_config
+from src.scrape.engine.prompts import build_extractor_prompts
 from src.scrape.engine.registry import get_domain_info
 from src.scrape.models import ExtractorScript
 from src.utils.logging_utils import get_logger
@@ -69,18 +70,7 @@ class ExtractorManager:
 
         llm = init_chat_model(scraper_config.LLM_MODEL)
         structured_llm = llm.with_structured_output(ExtractorScript)
-        system = f"""
-        You are an expert web scraper.
-        Write self-contained Python with all imports. BeautifulSoup only.
-        Write concise, readable code. 
-        Define a function named `extract(html: str) -> str`.
-        Your only job is to identify and extract the primary content structure.
-        Additional instructions: {instructions}
-        """
-        user_content = f"""
-        Analyze this HTML and write an `extract` function tailored to its specific structure.
-        Preserve meaningful information and output organized clean text.
-        HTML: {html_sample}"""
+        system, user_content = build_extractor_prompts(instructions, html_sample)
 
         code = structured_llm.invoke([
             SystemMessage(content=system),
@@ -94,7 +84,13 @@ class ExtractorManager:
     def _get_sample_html(self, html: str) -> str:
         """Strip boilerplate tags and truncate to sample size."""
         soup = BeautifulSoup(html, "lxml")
-        for tag in soup(["head", "script", "style", "nav", "footer", "header"]):
+        for tag in soup(["head", "script", "style", "nav", "footer"]):
             tag.decompose()
+        
         body_html = str(soup.body or soup)
-        return body_html[:scraper_config.HTML_SAMPLE_MAX_CHARS]
+        length = len(body_html)
+        start_idx = int(0.25 * length)
+        end_idx = min(start_idx+scraper_config.HTML_SAMPLE_MAX_CHARS, int(0.75 * length))
+        logger.info(f"Sample HTML length: {end_idx - start_idx} characters out of {length} characters")
+
+        return body_html[start_idx:end_idx]

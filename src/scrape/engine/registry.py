@@ -7,7 +7,7 @@ from src.scrape.models import DomainInfo
 DOMAIN_REGISTRY: Dict[str, DomainInfo] = {
     "rollcall.com": DomainInfo(
         extractor_name="rollcall_transcript",
-        instructions="Focus on extracting speaker dialogue with timestamps and metadata",
+        instructions="Focus on extracting speaker dialogue",
     ),
 }
 
