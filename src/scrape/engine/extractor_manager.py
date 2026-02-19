@@ -14,8 +14,8 @@ from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from src.scrape.config import scraper_config
+from src.scrape.engine.registry import get_domain_info
 from src.scrape.models import ExtractorScript
-from src.scrape.registry import get_domain_info
 from src.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -24,7 +24,7 @@ logger = get_logger(__name__)
 class ExtractorManager:
     """Resolves extractors by domain: loads cached or generates via LLM."""
 
-    DOMAINS_DIR = Path(__file__).parent / "domains"
+    DOMAINS_DIR = Path(__file__).parent.parent / "domains"
 
     def fetch_html(self, url: str) -> str:
         """Fetch raw HTML from URL via trafilatura."""
@@ -36,7 +36,7 @@ class ExtractorManager:
         domain = urlparse(url).netloc
         domain_info = get_domain_info(domain)
         if not domain_info:
-            raise ValueError(f"Domain '{domain}' not supported. Add to src/scrape/registry.py")
+            raise ValueError(f"Domain '{domain}' not supported. Add to src/scrape/engine/registry.py")
 
         path = self.DOMAINS_DIR / f"{domain_info.extractor_name}.py"
         if path.is_file():
@@ -58,7 +58,7 @@ class ExtractorManager:
 
     def _load_extractor(self, extractor_name: str) -> Callable[[str], str]:
         """Dynamically import and return the extract function from a domain module."""
-        module = importlib.import_module(f"{__package__}.domains.{extractor_name}")
+        module = importlib.import_module(f"src.scrape.domains.{extractor_name}")
         return module.extract
 
     def _generate_extractor_code(self, url: str, instructions: str, html: str | None = None) -> str:

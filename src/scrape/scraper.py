@@ -5,7 +5,7 @@ Uses domain-specific extractors (cached or LLM-generated) to extract
 primary content from HTML.
 """
 
-from src.scrape.extractor_manager import ExtractorManager
+from src.scrape.engine.extractor_manager import ExtractorManager
 from src.scrape.models import ScrapingResult, ScrapingData, ScrapeContext
 from src.shared.pipeline_definitions import StageResult
 

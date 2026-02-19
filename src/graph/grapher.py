@@ -9,9 +9,9 @@ from typing import Any
 from neo4j import GraphDatabase
 
 from src.graph.config import graph_config
-from src.graph.data_assembler import GraphDataAssembler
+from src.graph.engine.data_assembler import GraphDataAssembler
+from src.graph.engine.neo4j_loader import Neo4jLoader
 from src.graph.models import GraphContext, GraphData, GraphResult
-from src.graph.neo4j_loader import Neo4jLoader
 from src.shared.pipeline_definitions import StageResult
 from src.utils.logging_utils import get_logger
 
