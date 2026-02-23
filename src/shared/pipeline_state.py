@@ -35,32 +35,24 @@ class PipelineStateManager:
         self.pipeline_config = PipelineConfig()
     
     def create_state(self, discovered_article: DiscoveredArticle, run_timestamp: str,
-                     file_path: Optional[str] = None, search_url: Optional[str] = None) -> PipelineState:
+                     file_path: Optional[str] = None) -> PipelineState:
         """Create a new pipeline state for a discovered article"""
         now = datetime.now().isoformat()
-        
-        # Extract metadata from discovered article (only stage-specific fields)
         discover_metadata = DiscoverStageMetadata(
             date_score=discovered_article.date_score,
             date_source=discovered_article.date_source
         )
-        
-        # Initialize stages with discover stage
         discover_stage = StageMetadata(
             completed_at=now,
             file_path=file_path,
             metadata=discover_metadata.model_dump()
         )
-        stages = {
-            PipelineStages.DISCOVER.value: discover_stage
-        }
-        
+        stages = {PipelineStages.DISCOVER.value: discover_stage}
         state = PipelineState(
             id=discovered_article.id,
             run_timestamp=run_timestamp,
             source_url=discovered_article.url,
-            search_url=search_url,
-            speaker=discovered_article.speaker,
+            search_url=discovered_article.search_url,
             title=discovered_article.title,
             publication_date=discovered_article.publication_date,
             latest_completed_stage=PipelineStages.DISCOVER.value,
@@ -149,12 +141,23 @@ class PipelineStateManager:
                 if file_path:
                     stage_meta.file_path = file_path
                 
-                # Handle stage completion or failure
+                # Handle stage completion, filtering, or failure
                 if status == PipelineStageStatus.COMPLETED:
                     stage_meta.completed_at = now
                     stage_meta.error_message = None
                     state.latest_completed_stage = stage
                     state.next_stage = self.pipeline_config.get_next_stage(stage)
+                    state.error_message = None
+                    
+                    # Promote matched_speakers from stage metadata to top-level state
+                    if matched := custom_metadata.get("matched_speakers"):
+                        state.matched_speakers = matched
+                    
+                elif status == PipelineStageStatus.FILTERED:
+                    stage_meta.completed_at = now
+                    stage_meta.error_message = None
+                    state.latest_completed_stage = stage
+                    state.next_stage = None
                     state.error_message = None
                     
                 elif status == PipelineStageStatus.FAILED:
@@ -206,6 +209,7 @@ class PipelineStateManager:
     
     def _append_state(self, state: PipelineState) -> None:
         """Append a new state to the file"""
+        self.state_file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.state_file_path, "a", encoding="utf-8") as f:
             f.write(state.model_dump_json() + "\n")
     
@@ -224,6 +228,7 @@ class PipelineStateManager:
     
     def _write_all_states(self, states: List[Dict[str, Any]]) -> None:
         """Write all states to the file"""
+        self.state_file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.state_file_path, "w", encoding="utf-8") as f:
             for state_dict in states:
                 state = PipelineState(**state_dict)

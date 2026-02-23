@@ -19,31 +19,27 @@ def discover_content(discovery_params: DiscoveryRequest) -> EndpointResponse:
 
 
 @flow
-def discover_flow(speaker: str, start_date: str, end_date: Optional[str] = None, search_urls: Optional[List[str]] = None) -> None:
-    """
-    Entry point flow: Discover articles and create initial pipeline states.
-    
-    Uses the autonomous discovery agent to search for speaker content
-    within the specified date range.
-    """
-    logger.info(f"Starting {flow_name} for {speaker} from {start_date} to {end_date or 'present'}")
+def discover_flow(start_date: str, end_date: Optional[str] = None, search_urls: Optional[List[str]] = None) -> None:
+    """Entry point flow: Discover articles and create initial pipeline states."""
+    logger.info(f"Starting {flow_name} from {start_date} to {end_date or 'present'}")
     
     discovery_params = DiscoveryRequest(
-        speaker=speaker,
         start_date=start_date,
         end_date=end_date,
         search_urls=search_urls or []
     )
     
-    result = discover_content.submit(discovery_params)
-    result_data = result.result()
-    
-    # Parse output using DiscoveryResult model
-    discovery_result = DiscoveryResult.model_validate(result_data.output)
-    
-    if not discovery_result.success:
-        error = discovery_result.error_message or 'Unknown error'
-        logger.error(f"Discovery failed: {error}")
-        raise Exception(f"Discovery failed: {error}")
-    
-    logger.info(f"Completed {flow_name}")
+    try:
+        result = discover_content.submit(discovery_params)
+        result_data = result.result()
+        
+        discovery_result = DiscoveryResult.model_validate(result_data.output)
+        if not discovery_result.success:
+            error = discovery_result.error_message or 'Unknown error'
+            logger.error(f"Discovery failed: {error}", extra={'stage': PipelineStages.DISCOVER.value, 'error_type': 'component_error'})
+            raise Exception(f"Discovery failed: {error}")
+        
+        logger.info(f"Completed {flow_name}")
+    except Exception as e:
+        logger.error(f"Error in {flow_name}: {e}", extra={'stage': PipelineStages.DISCOVER.value, 'error_type': 'component_error'})
+        raise

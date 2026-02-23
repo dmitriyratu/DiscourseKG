@@ -191,7 +191,7 @@ graph LR
 
 Items progress through five sequential stages: discover (find sources), scrape (extract transcripts), summarize (condense if needed), categorize (extract entities/topics), and graph (load to Neo4j). Each stage is orchestrated by Prefect flows that use the `FlowProcessor` pattern for consistent item handling, error management, and state updates.
 
-The `PipelineStateManager` tracks each item's progress in a JSONL file at `data/state/pipeline_state.jsonl`, storing:
+The `PipelineStateManager` tracks each item's progress in a JSONL file at `data/pipeline_state.jsonl`, storing:
 - Core identifiers (id, run_timestamp)
 - Content metadata (speaker, content_type, title, content_date, source_url)
 - Stage tracking (latest_completed_stage, next_stage)
@@ -397,26 +397,24 @@ Proportions are rounded to 3 decimal places (configurable via `graph_config.DECI
 ### File Organization
 ```
 data/
-├── state/
-│   └── pipeline_state_{env}.jsonl    # Pipeline state tracking
-└── {env}/                             # e.g., "test" or "prod"
-    ├── speakers.json                  # Speaker configuration
-    └── {speaker}/                     # e.g., "test_speaker"
-        ├── discover/
-        │   └── {content_type}/
-        │       └── {id}.json          # Discovered items with metadata
-        ├── scrape/
-        │   └── {content_type}/
-        │       └── {id}.json          # ScrapingData with scrape text
-        ├── summarize/
-        │   └── {content_type}/
-        │       └── {id}.json          # Summaries with compression metrics
-        ├── categorize/
-        │   └── {content_type}/
-        │       └── {id}.json          # EntityMention[] with hierarchical structure
-        └── graph/
-            └── {content_type}/
-                └── {id}.json          # Graph loading results
+├── pipeline_state.jsonl               # Pipeline state tracking
+├── speakers.json                      # Speaker configuration
+└── {speaker}/                         # e.g., "test_speaker"
+    ├── discover/
+    │   └── {content_type}/
+    │       └── {id}.json              # Discovered items with metadata
+    ├── scrape/
+    │   └── {content_type}/
+    │       └── {id}.json              # ScrapingData with scrape text
+    ├── summarize/
+    │   └── {content_type}/
+    │       └── {id}.json              # Summaries with compression metrics
+    ├── categorize/
+    │   └── {content_type}/
+    │       └── {id}.json              # EntityMention[] with hierarchical structure
+    └── graph/
+        └── {content_type}/
+            └── {id}.json              # Graph loading results
 ```
 
 ### Stage Data Flow

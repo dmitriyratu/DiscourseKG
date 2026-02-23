@@ -38,14 +38,16 @@ class Neo4jLoader:
 
         self._create_constraints(session)
 
-        speaker_stats = self._load_speaker_node(session, data["speaker"])
-        stats["nodes_created"] += speaker_stats["nodes_created"]
+        # Load speaker nodes and DELIVERED relationships for each matched speaker
+        for speaker in data["speakers"]:
+            speaker_stats = self._load_speaker_node(session, speaker)
+            stats["nodes_created"] += speaker_stats["nodes_created"]
 
-        comm_stats = self._load_communication_node(
-            session, data["communication"], data["speaker"]["name_id"]
-        )
-        stats["nodes_created"] += comm_stats["nodes_created"]
-        stats["relationships_created"] += comm_stats["relationships_created"]
+            comm_stats = self._load_communication_node(
+                session, data["communication"], speaker["name_id"]
+            )
+            stats["nodes_created"] += comm_stats["nodes_created"]
+            stats["relationships_created"] += comm_stats["relationships_created"]
 
         entity_stats = self._load_entities_and_mentions(
             session, data["id"], data["entities"]

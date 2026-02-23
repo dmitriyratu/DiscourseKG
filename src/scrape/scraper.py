@@ -25,7 +25,8 @@ class Scraper:
         """Scrape content from the provided processing context."""
         url = processing_context.source_url
         html = self.extractor_manager.fetch_html(url)
-
+        if not html:
+            raise RuntimeError(f"Failed to fetch {url}: download returned None")
 
         extract_function = self.extractor_manager.get_or_create_extractor(url)
         scrape_text = extract_function(html)

@@ -1,17 +1,16 @@
 """Data models for summarization domain."""
 
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
+from typing import Dict, Any, Optional
 from src.shared.models import StageOperationResult
 
 
 class SummarizationData(BaseModel):
-    """Summarized content data."""
-    summarize: str = Field(..., description="The summarized text")
-    original_word_count: int = Field(..., description="Word count of original text")
-    summary_word_count: int = Field(..., description="Word count of summary")
-    compression_ratio: float = Field(..., description="Ratio of summary length to original length")
-    target_word_count: int = Field(..., description="Target word count for summary")
+    """Summarized content data. When compression_of_original=1, summarize is null (use scrape)."""
+    summarize: Optional[str] = Field(None, description="The summarized text (null when no compression)")
+    compression_of_original: float = Field(..., description="Ratio of summary length to original (1 = no compression)")
+    original_word_count: Optional[int] = Field(None, description="Word count of original (omitted when no compression)")
+    summary_word_count: Optional[int] = Field(None, description="Word count of summary (omitted when no compression)")
 
 
 class SummarizationResult(StageOperationResult[SummarizationData]):

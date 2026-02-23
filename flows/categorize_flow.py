@@ -1,7 +1,6 @@
 from prefect import flow, task
-from src.shared.pipeline_definitions import PipelineStages, PipelineState
+from src.shared.pipeline_definitions import EndpointResponse, PipelineStages, PipelineState
 from src.shared.flow_processor import FlowProcessor
-from src.shared.models import EndpointResponse
 from src.utils.logging_utils import get_logger
 from src.categorize.categorize_endpoint import CategorizeEndpoint
 from pathlib import Path
@@ -21,11 +20,10 @@ def categorize_item(state: PipelineState) -> EndpointResponse:
     # Load previous attempt's context if this is a retry
     if id in _retry_context:
         retry_ctx = _retry_context[id]
-        # Update state with retry context for this attempt
         state = state.model_copy(update={
-            'error_message': retry_ctx.get('error')
+            'error_message': retry_ctx.get('error'),
+            'previous_failed_output': retry_ctx.get('failed_output')
         })
-        # Note: failed_output is handled via exception attribute, not state
     
     try:
         result = CategorizeEndpoint().execute(state)

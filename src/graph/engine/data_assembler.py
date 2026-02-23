@@ -22,9 +22,6 @@ logger = get_logger(__name__)
 class GraphDataAssembler:
     """Loads and stitches data from pipeline stages for Neo4j ingestion."""
 
-    def __init__(self) -> None:
-        self.data_loader = DataLoader()
-
     def assemble(self, context: GraphContext) -> Dict[str, Any]:
         """Load from all stages, preprocess, and return Neo4j-ready context."""
         file_paths = {
@@ -34,12 +31,12 @@ class GraphDataAssembler:
 
         categorization_data = self._load_categorization(file_paths)
         communication_data = self._load_communication(file_paths, context)
-        speaker_data = self._load_speaker(context.speaker)
+        speakers_data = self._load_speakers(context.matched_speakers)
         preprocessed_entities = self._preprocess_entities(categorization_data)
 
         return {
             "id": communication_data["id"],
-            "speaker": speaker_data,
+            "speakers": speakers_data,
             "communication": communication_data,
             "entities": preprocessed_entities,
         }
@@ -47,7 +44,7 @@ class GraphDataAssembler:
     def _load_categorization(self, file_paths: Dict[str, str]) -> List[Dict[str, Any]]:
         """Load categorization data (entities)."""
         categorize_path = file_paths.get(PipelineStages.CATEGORIZE.value)
-        output = self.data_loader.load(categorize_path)
+        output = DataLoader.load(categorize_path)
         categorization_result = CategorizationResult.model_validate(output)
         if not categorization_result.data:
             return []
@@ -78,17 +75,12 @@ class GraphDataAssembler:
         compression_ratio = 1.0
 
         if summarize_path:
-            summarize_output = self.data_loader.load(summarize_path)
+            summarize_output = DataLoader.load(summarize_path)
             summarization_result = SummarizationResult.model_validate(summarize_output)
             if summarization_result.data:
-                summary_word_count = summarization_result.data.summary_word_count
-                original_word_count = summarization_result.data.original_word_count
-                compression_ratio = summarization_result.data.compression_ratio
-                was_summarized = (
-                    summary_word_count is not None
-                    and original_word_count is not None
-                    and summary_word_count != original_word_count
-                )
+                compression_of_original = summarization_result.data.compression_of_original
+                compression_ratio = compression_of_original
+                was_summarized = compression_of_original < 1.0
 
         return {
             "id": scraping_result.id,
@@ -102,28 +94,35 @@ class GraphDataAssembler:
             "compression_ratio": compression_ratio,
         }
 
-    def _load_speaker(self, speaker_name: str) -> Dict[str, Any]:
-        """Load speaker metadata from speakers.json."""
-        if not speaker_name:
-            raise ValueError("Speaker name is required")
+    def _load_speakers(self, matched_speakers: Dict[str, str]) -> List[Dict[str, Any]]:
+        """Load speaker metadata from speakers.json for each matched speaker id."""
+        if not matched_speakers:
+            raise ValueError("No matched speakers provided")
 
-        speakers_file = Path(config.PROJECT_ROOT) / "data" / config.ENVIRONMENT / "speakers.json"
+        speakers_file = Path(config.PROJECT_ROOT) / "data" / "speakers.json"
         with open(speakers_file) as f:
-            speakers_data = json.load(f)
+            registry = SpeakerRegistry(**json.load(f))
 
-        speakers_registry = SpeakerRegistry(**speakers_data)
-        speaker_obj = speakers_registry.speakers[speaker_name]
+        results = []
+        for speaker_id, display_name in matched_speakers.items():
+            if speaker_id not in registry.speakers:
+                logger.warning(f"Speaker '{speaker_id}' not found in speakers.json, skipping")
+                continue
+            speaker_obj = registry.speakers[speaker_id]
+            industry = getattr(speaker_obj.industry, "value", speaker_obj.industry)
+            results.append({
+                "name_id": speaker_id,
+                "name": display_name,
+                "display_name": display_name,
+                "role": speaker_obj.role,
+                "organization": speaker_obj.organization,
+                "industry": industry,
+                "region": speaker_obj.region,
+            })
 
-        industry = getattr(speaker_obj.industry, "value", speaker_obj.industry)
-        return {
-            "name_id": speaker_name,
-            "name": speaker_obj.display_name,
-            "display_name": speaker_obj.display_name,
-            "role": speaker_obj.role,
-            "organization": speaker_obj.organization,
-            "industry": industry,
-            "region": speaker_obj.region,
-        }
+        if not results:
+            raise ValueError(f"None of the matched speakers found in registry: {list(matched_speakers.keys())}")
+        return results
 
     def _preprocess_entities(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Preprocess entities for Neo4j loading."""

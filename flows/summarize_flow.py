@@ -1,7 +1,6 @@
 from prefect import flow, task
-from src.shared.pipeline_definitions import PipelineStages, PipelineState
+from src.shared.pipeline_definitions import EndpointResponse, PipelineStages, PipelineState
 from src.shared.flow_processor import FlowProcessor
-from src.shared.models import EndpointResponse
 from src.utils.logging_utils import get_logger
 from src.summarize.summarize_endpoint import SummarizeEndpoint
 from pathlib import Path

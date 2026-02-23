@@ -1,7 +1,7 @@
 """Data models for Neo4j graph loading."""
 
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
+from typing import List, Optional, Dict, Any
 from src.shared.models import StageOperationResult
 
 
@@ -20,7 +20,7 @@ class GraphContext(BaseModel):
     """Processing context for graph loading operation."""
     id: str = Field(..., description="Unique identifier for the item")
     stages: Dict[str, Any] = Field(default_factory=dict, description="Per-stage metadata")
-    speaker: str = Field(..., description="Speaker name for loading from speakers.json")
+    matched_speakers: Dict[str, str] = Field(default_factory=dict, description="Matched speakers: id -> display_name")
     title: Optional[str] = Field(None, description="Article title")
     publication_date: Optional[str] = Field(None, description="Publication date (YYYY-MM-DD)")
     source_url: Optional[str] = Field(None, description="Article URL")
@@ -30,4 +30,4 @@ class GraphItem(BaseModel):
     """Input record required for graph loading."""
     id: str = Field(..., description="Identifier of the pipeline item to load")
     stages: Dict[str, Any] = Field(default_factory=dict, description="Per-stage metadata")
-    speaker: str = Field(..., description="Speaker name for the communication")
+    matched_speakers: Dict[str, str] = Field(default_factory=dict, description="Matched speakers: id -> display_name")

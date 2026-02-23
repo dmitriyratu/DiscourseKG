@@ -1,7 +1,6 @@
 from prefect import flow, task
-from src.shared.pipeline_definitions import PipelineStages, PipelineState
+from src.shared.pipeline_definitions import EndpointResponse, PipelineStages, PipelineState
 from src.shared.flow_processor import FlowProcessor
-from src.shared.models import EndpointResponse
 from src.utils.logging_utils import get_logger
 from src.graph.graph_endpoint import GraphEndpoint
 from pathlib import Path
@@ -13,11 +12,7 @@ flow_name = Path(__file__).stem
 @task(name="graph_item", retries=2, retry_delay_seconds=10, retry_jitter_factor=0.5, timeout_seconds=60)
 def graph_item(state: PipelineState) -> EndpointResponse:
     """Task to preprocess data for graph with error-aware retries."""
-    try:
-        result = GraphEndpoint().execute(state)
-        return result
-    except Exception as e:
-        raise
+    return GraphEndpoint().execute(state)
 
 
 @flow

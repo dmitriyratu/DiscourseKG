@@ -2,24 +2,19 @@
 Text summarization for knowledge graph analysis.
 
 This module provides summarization that preserves original content
-by selecting the most important sentences based on semantic similarity and position.
+by selecting the most important sentences based on semantic similarity.
 Optimized for speech/communication content analysis.
 """
 
 import numpy as np
 import tiktoken
-import time
 from sentence_transformers import SentenceTransformer, util
 from nltk.tokenize import sent_tokenize
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from src.summarize.models import SummarizationResult, SummarizationData, SummarizeContext
-from src.config import config
 from src.summarize.config import summarization_config
-from src.utils.logging_utils import get_logger
 from src.shared.pipeline_definitions import StageResult
-
-logger = get_logger(__name__)
 
 
 class Summarizer:
@@ -30,26 +25,13 @@ class Summarizer:
     """
     
     WINDOW_SIZE = 3
-    
-    # Focus primarily on content relevance, not position
-    POSITION_WEIGHTS = {
-        'intro': 0.10,
-        'centrality': 0.90,  # Focus almost entirely on content relevance
-        'conclusion': 0.00,  # No position bias
-    }
-    
-    INTRO_SENTENCES = 0  # No special treatment for intros
-    CONCLUSION_SENTENCES = 0  # No special treatment for conclusions
-    
+
     def __init__(self) -> None:
         self.tokenizer = tiktoken.get_encoding(summarization_config.SUMMARIZER_TOKENIZER)
         self.model = SentenceTransformer(summarization_config.SUMMARIZER_MODEL)
     
     def summarize_content(self, processing_context: SummarizeContext) -> StageResult:
         """Summarize text to target token count."""
-        start_time = time.time()
-        
-        # Extract what we need from the processing context
         id = processing_context.id
         text = processing_context.text
         target_tokens = processing_context.target_tokens
@@ -57,39 +39,25 @@ class Summarizer:
         original_tokens = len(self.tokenizer.encode(text))
         
         if not text or not text.strip():
-            return self._create_result(id, text, "", 0.0, target_tokens)
+            return self._create_result(id, text, "", 0.0)
         
         summary_text = text if original_tokens <= target_tokens else self._do_summarization(text, target_tokens)
-        compression_ratio = len(summary_text) / len(text) if text else 0.0
-        
-        return self._create_result(id, text, summary_text, compression_ratio, target_tokens)
+        orig_words = len(text.split()) if text else 0
+        sum_words = len(summary_text.split()) if summary_text else 0
+        compression_of_original = sum_words / orig_words if orig_words else 1.0
+        output_text = None if compression_of_original >= 1.0 else summary_text
+        return self._create_result(id, text, output_text, compression_of_original)
 
     
     def _do_summarization(self, text: str, target_tokens: int) -> str:
-        """Internal method that performs the actual summarization logic."""
-        # Step 1: Split the text into sentences
+        """Select highest-centrality sentences until target token count."""
         sentences = sent_tokenize(text)
-        
         if len(sentences) < self.WINDOW_SIZE:
             return text
-        
-        # Step 2: Generate embeddings and centrality scores
+
         centrality_scores = self._compute_hybrid_scores(sentences)
-        
-        # Step 3: Calculate position scores
-        intro_scores, conclusion_scores = self._get_position_scores(sentences)
-        
-        # Step 4: Combine scores with weights
-        final_scores = (
-            self.POSITION_WEIGHTS['centrality'] * centrality_scores +
-            self.POSITION_WEIGHTS['intro'] * intro_scores +
-            self.POSITION_WEIGHTS['conclusion'] * conclusion_scores
-        )
-        
-        # Step 5: Rank sentences by combined score
-        ranked_indices = final_scores.argsort()[::-1]
-        
-        # Step 6: Accumulate sentences until target token count
+        ranked_indices = centrality_scores.argsort()[::-1]
+
         selected_sentences = []
         token_count = 0
         max_tokens = int(target_tokens * 1.15) 
@@ -97,30 +65,17 @@ class Summarizer:
         for rank_index in ranked_indices:
             sentence = sentences[rank_index]
             sentence_tokens = len(self.tokenizer.encode(sentence))
-            
             if token_count + sentence_tokens <= max_tokens:
                 selected_sentences.append(rank_index)
                 token_count += sentence_tokens
             else:
                 break
-        
-        # Step 7: Reassemble the summary in original order
+
         top_sentences = [sentences[i] for i in sorted(selected_sentences)]
         summary_text = ' '.join(top_sentences)
         
         return summary_text
-    
-    
-    def _get_position_scores(self, sentences: List[str]) -> tuple[np.ndarray, np.ndarray]:
-        """Calculate position-based scores (minimal for generalizability)."""
-        num_sentences = len(sentences)
-        
-        # Return zero scores - no position bias
-        intro_scores = np.zeros(num_sentences)
-        conclusion_scores = np.zeros(num_sentences)
-        
-        return intro_scores, conclusion_scores
-    
+
     def _compute_hybrid_scores(self, sentences: List[str]) -> np.ndarray:
         """Compute semantic similarity scores for sentence ranking."""
         num_sentences = len(sentences)
@@ -155,20 +110,22 @@ class Summarizer:
         ])
         
         standardized_global_scores = (global_scores - global_scores.min()) / (global_scores.max() - global_scores.min() + 1e-8)
-        standardized_local_scores = (local_scores - local_scores.min()) / (local_scores.min() - local_scores.min() + 1e-8)
+        standardized_local_scores = (local_scores - local_scores.min()) / (local_scores.max() - local_scores.min() + 1e-8)
         
         final_scores = 0.7 * standardized_global_scores + 0.3 * standardized_local_scores
         return final_scores
     
-    def _create_result(self, id: str, original: str, summary: str, compression: float, 
-                      target_tokens: int) -> StageResult:
+    def _create_result(
+        self, id: str, original: str, summary: Optional[str], compression_of_original: float
+    ) -> StageResult:
         """Helper to create StageResult with separated artifact and metadata."""
+        orig_words = len(original.split())
+        sum_words = len(summary.split()) if summary else 0
         summarization_data = SummarizationData(
             summarize=summary,
-            original_word_count=len(original.split()),
-            summary_word_count=len(summary.split()),
-            compression_ratio=compression,
-            target_word_count=target_tokens
+            compression_of_original=compression_of_original,
+            original_word_count=orig_words if compression_of_original < 1 else None,
+            summary_word_count=sum_words if compression_of_original < 1 else None,
         )
         
         # Build artifact (what gets persisted)

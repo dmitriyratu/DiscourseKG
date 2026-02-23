@@ -1,4 +1,4 @@
-"""Summarization stage configuration."""
+"""Summarize stage configuration."""
 
 from pydantic import BaseModel, Field
 
@@ -7,7 +7,7 @@ class SummarizationConfig(BaseModel):
     """Settings for summarization processing."""
     
     # Target token count for summarized output
-    TARGET_SUMMARY_TOKENS: int = Field(default=1000)
+    TARGET_SUMMARY_TOKENS: int = Field(default=30_000)
     
     # Model and tokenizer settings
     SUMMARIZER_MODEL: str = Field(default="all-MiniLM-L6-v2", description="Sentence transformer model")

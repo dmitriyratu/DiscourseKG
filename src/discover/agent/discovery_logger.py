@@ -14,16 +14,10 @@ from src.shared.pipeline_state import PipelineStateManager
 console = Console()
 
 
-def get_existing_source_urls(speaker: Optional[str] = None) -> set[str]:
-    """Return set of source URLs already in pipeline (for display)."""
+def get_existing_source_urls() -> set[str]:
+    """Return set of source URLs already in pipeline."""
     states = PipelineStateManager().get_all_states()
-    urls = set()
-    for s in states:
-        if speaker and s.get("speaker") != speaker:
-            continue
-        if url := s.get("source_url"):
-            urls.add(url)
-    return urls
+    return {s["source_url"] for s in states if s.get("source_url")}
 
 
 class DiscoveryLogger:

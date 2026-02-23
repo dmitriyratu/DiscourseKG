@@ -18,36 +18,24 @@ class CategorizeEndpoint(BaseEndpoint):
     
     def execute(self, state: PipelineState) -> EndpointResponse:
         """Execute the categorization process for a single item."""
-        # Load summary artifact
-        data_loader = DataLoader()
-        current_file_path = state.get_current_file_path()
-        if not current_file_path:
-            raise ValueError(
-                f"No file path found for latest completed stage {state.latest_completed_stage} "
-                f"for item {state.id}"
-            )
+        content = DataLoader.load_content_input(state, PipelineStages.SUMMARIZE, PipelineStages.SCRAPE)
 
-        # Validate content
-        summary_text = data_loader.extract_stage_output(current_file_path, PipelineStages.SUMMARIZE)
-        if not summary_text or not summary_text.strip():
-            raise ValueError("Empty or invalid summary content")
-
-        # Get title and publication_date from top-level state
-        title = state.title or 'Unknown'
-        content_date = state.publication_date or 'Unknown'
+        title = state.title
+        content_date = state.publication_date
 
         # Build categorization input
         categorization_input = CategorizationInput(
             title=title,
             content_date=content_date,
-            content=summary_text
+            content=content
         )
 
         # Build processing context
         processing_context = CategorizeContext(
             id=state.id,
             categorization_input=categorization_input,
-            previous_error=state.error_message
+            previous_error=state.error_message,
+            previous_failed_output=state.previous_failed_output
         )
 
         # Execute categorization pipeline - returns StageResult

@@ -5,9 +5,11 @@ Used across the DiscourseKG pipeline to keep stage enums, status
 constants, and shared data models centralized.
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, List, Dict, Any
 from enum import Enum
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from src.shared.models import StageOperationResult
 
 
 class PipelineStageStatus(str, Enum):
@@ -17,6 +19,7 @@ class PipelineStageStatus(str, Enum):
     IN_PROGRESS = "IN_PROGRESS"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
+    FILTERED = "FILTERED"
     INVALIDATED = "INVALIDATED"
 
 
@@ -25,6 +28,7 @@ class PipelineStages(str, Enum):
 
     DISCOVER = "discover"
     SCRAPE = "scrape"
+    FILTER = "filter"
     SUMMARIZE = "summarize"
     CATEGORIZE = "categorize"
     GRAPH = "graph"
@@ -35,7 +39,8 @@ class PipelineConfig:
 
     STAGE_FLOW = {
         PipelineStages.DISCOVER: PipelineStages.SCRAPE,
-        PipelineStages.SCRAPE: PipelineStages.SUMMARIZE,
+        PipelineStages.SCRAPE: PipelineStages.FILTER,
+        PipelineStages.FILTER: PipelineStages.SUMMARIZE,
         PipelineStages.SUMMARIZE: PipelineStages.CATEGORIZE,
         PipelineStages.CATEGORIZE: PipelineStages.GRAPH,
         PipelineStages.GRAPH: None,
@@ -44,7 +49,6 @@ class PipelineConfig:
     @classmethod
     def get_next_stage(cls, current_stage: str) -> Optional[str]:
         """Get the next stage after the current one."""
-
         return cls.STAGE_FLOW.get(current_stage)
 
 
@@ -70,7 +74,7 @@ class PipelineState(BaseModel):
     
     # Identity & Content (what is this?)
     id: str = Field(..., description="Unique ID from raw data")
-    speaker: Optional[str] = Field(None, description="Primary speaker name")
+    matched_speakers: Dict[str, str] = Field(default_factory=dict, description="Matched speakers: id -> display_name")
     publication_date: Optional[str] = Field(None, description="Publication date (YYYY-MM-DD)")
     title: Optional[str] = Field(None, description="Article title")
     
@@ -78,6 +82,7 @@ class PipelineState(BaseModel):
     latest_completed_stage: Optional[str] = Field(None, description="Latest successfully completed stage")
     next_stage: Optional[str] = Field(None, description="Next stage that needs to be processed")
     error_message: Optional[str] = Field(None, description="Error message if current stage failed")
+    previous_failed_output: Optional[str] = Field(None, description="Raw LLM output from previous failed attempt, for retry context")
     
     # Source (where did it come from?)
     source_url: Optional[str] = Field(None, description="Article URL (for scraping)")
@@ -93,12 +98,17 @@ class PipelineState(BaseModel):
     # Stage-specific data (detailed breakdown)
     stages: Dict[str, StageMetadata] = Field(default_factory=dict, description="Per-stage metadata")
 
+    @field_validator("matched_speakers", mode="before")
+    @classmethod
+    def _empty_dict_if_none(cls, v: Any) -> Dict[str, str]:
+        return v if v is not None else {}
+
     def get_current_file_path(self) -> Optional[str]:
         """Get file path for the latest completed stage"""
         if self.latest_completed_stage and self.latest_completed_stage in self.stages:
             return self.stages[self.latest_completed_stage].file_path
         return None
-    
+
     def get_file_path_for_stage(self, stage: str) -> Optional[str]:
         """Get file path for a specific stage"""
         if stage in self.stages:
@@ -114,3 +124,10 @@ class EndpointResponse(BaseModel):
     input_data: Optional[Any] = Field(None, description="Input data passed to endpoint")
     state_update: Optional[Dict[str, Any]] = Field(None, description="Metadata for pipeline state updates")
     processing_time_seconds: Optional[float] = Field(None, description="Processing time in seconds (added by flow processor)")
+    pipeline_status: Optional[PipelineStageStatus] = Field(None, description="Override default COMPLETED; e.g. FILTERED for dead-end")
+
+    @classmethod
+    def for_error(cls, item_id: str, stage: str, error: str, processing_time: float) -> "EndpointResponse":
+        """Create response for a failed stage operation."""
+        output = StageOperationResult(id=item_id, success=False, data=None, error_message=error).model_dump()
+        return cls(success=True, stage=stage, output=output, processing_time_seconds=round(processing_time, 2))

@@ -6,15 +6,18 @@ consistent error handling, persistence, and state management.
 """
 
 import time
-from typing import Callable, Any, Optional
-from prefect import task
+from typing import Callable, Any
 
 from tasks.orchestration import get_items
-from src.shared.pipeline_definitions import PipelineStageStatus, PipelineStages, PipelineState
+from src.shared.pipeline_definitions import (
+    EndpointResponse,
+    PipelineStageStatus,
+    PipelineStages,
+    PipelineState,
+)
 from src.shared.pipeline_state import PipelineStateManager
 from src.shared.persistence import save_data
 from src.shared.models import StageOperationResult
-from src.shared.pipeline_definitions import EndpointResponse
 from src.utils.logging_utils import get_logger
 
 
@@ -43,65 +46,26 @@ class FlowProcessor:
         """Process a single item with error handling and state management."""
         start_time = time.time()
         try:
-            # Process the item with timing
             result = task_func.submit(state)
             result_data = result.result()
-            
-            # Add timing to result_data using model_copy for immutability
             elapsed = max(0.01, time.time() - start_time)
             result_data = result_data.model_copy(update={'processing_time_seconds': round(elapsed, 2)})
-            
-            # Extract id from output using StageOperationResult model
             output = StageOperationResult[Any].model_validate(result_data.output)
-            id = output.id
+            output_file = save_data(state, result_data.output, stage.value)
             
-            # Save the result (speaker/search_url looked up from state automatically)
-            output_file = save_data(id, result_data.output, stage.value)
-            
-            # Update pipeline state (handles metadata via result_data.state_update)
+            status = result_data.pipeline_status or PipelineStageStatus.COMPLETED
             manager.update_stage_status(
-                status=PipelineStageStatus.COMPLETED,
+                status=status,
                 result_data=result_data,
                 file_path=output_file
             )
             
-            self.logger.debug(f"Successfully completed {stage} for item {id} -> {output_file}")
+            self.logger.debug(f"Successfully completed {stage} for item {output.id} -> {output_file}")
                 
         except Exception as e:
-            id = state.id
             elapsed = max(0.01, time.time() - start_time)
-            self.logger.error(f"Error processing item {id} in {stage}: {str(e)}", 
-                             extra={'id': id, 'stage': stage, 'error_type': 'component_error', 'item_url': state.source_url})
-            
-            # Try to extract failed output if available (for validation errors)
-            failed_output = None
-            if hasattr(e, 'failed_output'):
-                failed_output = e.failed_output
-                if failed_output:
-                    self.logger.debug(f"Extracted failed output from exception for {id} - storing in pipeline state")
-            
-            # Create error result using StageOperationResult model
-            error_output = StageOperationResult[Any](
-                id=id,
-                success=False,
-                data=None,
-                error_message=str(e)
-            )
-            
-            # Include failed_output if available (not part of StageOperationResult model)
-            output_dict = error_output.model_dump()
-            if failed_output:
-                output_dict['failed_output'] = failed_output
-            
-            error_result = EndpointResponse(
-                success=True,
-                stage=stage,
-                output=output_dict,
-                processing_time_seconds=round(elapsed, 2)
-            )
-            
-            # Update state to failed
+            self.logger.error(f"Error processing item {state.id} in {stage}: {str(e)}")
             manager.update_stage_status(
                 status=PipelineStageStatus.FAILED,
-                result_data=error_result
+                result_data=EndpointResponse.for_error(state.id, stage.value, str(e), elapsed)
             )

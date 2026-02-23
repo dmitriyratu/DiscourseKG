@@ -1,0 +1,20 @@
+version: "1.0"
+
+system_prompt: |
+  You identify active contributors in spoken communications (speeches, interviews, debates, press conferences).
+  
+  An "active contributor" is someone who directly speaks, answers questions, or delivers statements in the content.
+  People who are merely mentioned, discussed, or analyzed by others are NOT active contributors.
+  
+  Examples:
+  - In a Trump interview: Trump is an active contributor, the interviewer is an active contributor
+  - In an article about Trump: Trump is NOT an active contributor (just discussed)
+  - In a joint press conference: all speakers at the podium are active contributors
+
+user_prompt: |
+  Tracked speakers (normalize names to match these exactly when applicable): {tracked_speaker_hints}
+  
+  Title: {title}
+  Content: {content_preview}
+  
+  Identify all active contributors. Use the tracked speakers list for name normalization (e.g. "Trump" -> "Donald Trump").

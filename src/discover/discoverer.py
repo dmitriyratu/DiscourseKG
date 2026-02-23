@@ -6,7 +6,6 @@ replacing the previous mock discovery implementation.
 """
 
 import asyncio
-import hashlib
 import time
 from datetime import datetime
 from typing import List
@@ -21,7 +20,6 @@ from src.shared.persistence import save_data
 from src.shared.pipeline_state import PipelineStateManager
 from src.shared.pipeline_definitions import PipelineStages, StageResult
 from src.utils.logging_utils import get_logger
-from src.utils.string_utils import slugify
 
 logger = get_logger(__name__)
 
@@ -37,12 +35,6 @@ class Discoverer:
     def __init__(self, config: DiscoveryConfig = discovery_config):
         self.config = config
     
-    def _generate_discover_id(self, article: Article) -> str:
-        """Generate unique ID from article: {date}-{title_slug}-{url_hash}."""
-        title_slug = slugify(article.title, max_length=40)
-        url_hash = hashlib.md5(article.url.encode()).hexdigest()[:6]
-        return f"{article.publication_date}-{title_slug}-{url_hash}"
-    
     async def _run_agent_async(self, search_url: str, start_date: str, end_date: str, existing_urls: set) -> tuple:
         """Run the discovery agent asynchronously."""
         agent = DiscoveryAgent(config=self.config)
@@ -51,11 +43,11 @@ class Discoverer:
     def discover_content(self, discovery_params: DiscoveryRequest) -> StageResult:
         """Discover content sources using the autonomous agent."""
         if not discovery_params.search_urls:
-            logger.warning(f"No search URLs provided for speaker {discovery_params.speaker}")
+            logger.warning("No search URLs provided")
             return self._create_result(discovery_params, [], 0, 0)
         
         start_time = time.time()
-        logger.info(f"Starting discovery for speaker: {discovery_params.speaker} ({len(discovery_params.search_urls)} search URLs)")
+        logger.info(f"Starting discovery ({len(discovery_params.search_urls)} search URLs)")
         
         run_timestamp = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
         manager = PipelineStateManager()
@@ -66,7 +58,7 @@ class Discoverer:
         total_all = 0
 
         end_date = discovery_params.end_date or datetime.now().strftime("%Y-%m-%d")
-        existing_urls = get_existing_source_urls(speaker=discovery_params.speaker)
+        existing_urls = get_existing_source_urls()
         for search_url in discovery_params.search_urls:
             logger.info(f"Searching: {search_url}")
 
@@ -86,21 +78,9 @@ class Discoverer:
                         duplicates_skipped += 1
                         continue
                     
-                    discovered = DiscoveredArticle.from_article(
-                        article, 
-                        self._generate_discover_id(article), 
-                        discovery_params.speaker
-                    )
-                    
-                    file_path = save_data(
-                        id=discovered.id,
-                        data=discovered.model_dump(),
-                        data_type=PipelineStages.DISCOVER.value,
-                        speaker=discovery_params.speaker,
-                        search_url=search_url
-                    )
-                    
-                    manager.create_state(discovered, run_timestamp, file_path, search_url)
+                    discovered = DiscoveredArticle.from_article(article, search_url=search_url)
+                    file_path = save_data(discovered, discovered.model_dump(), PipelineStages.DISCOVER.value)
+                    manager.create_state(discovered, run_timestamp, file_path)
                     existing_urls.add(article.url)
                     all_discovered.append(discovered)
                     logger.debug(f"Discovered: {discovered.id}")
@@ -132,7 +112,6 @@ class Discoverer:
         discovery_data = DiscoveryData(
             discovery_id=discovery_id,
             discovered_articles=discovered_articles,
-            speaker=request.speaker,
             date_range=f"{request.start_date} to {request.end_date or 'present'}",
             total_found=total_found,
             new_articles=len(discovered_articles),

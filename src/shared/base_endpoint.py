@@ -7,8 +7,7 @@ Provides standardized execute method and common patterns for endpoint implementa
 from typing import Dict, Any, Optional
 from abc import ABC, abstractmethod
 from src.utils.logging_utils import get_logger
-from src.shared.pipeline_definitions import EndpointResponse
-from src.shared.pipeline_definitions import PipelineState
+from src.shared.pipeline_definitions import EndpointResponse, PipelineStageStatus, PipelineState
 
 
 class BaseEndpoint(ABC):
@@ -29,6 +28,7 @@ class BaseEndpoint(ABC):
         stage: str,
         input_data: Optional[Any] = None,
         state_update: Optional[Dict[str, Any]] = None,
+        pipeline_status: Optional[PipelineStageStatus] = None,
     ) -> EndpointResponse:
         """Create standardized success response."""
         return EndpointResponse(
@@ -36,6 +36,7 @@ class BaseEndpoint(ABC):
             stage=stage,
             output=result,
             input_data=input_data,
-            state_update=state_update
+            state_update=state_update,
+            pipeline_status=pipeline_status,
         )
 

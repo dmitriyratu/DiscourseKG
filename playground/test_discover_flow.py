@@ -3,9 +3,8 @@ from flows.discover_flow import discover_flow
 
 def main():
     result = discover_flow(
-        speaker="trump",
-        start_date="2026-01-01",
-        end_date=None,
+        start_date="2026-02-04", 
+        end_date="2026-02-04",
         search_urls=["https://rollcall.com/factbase/trump/search/"]
     )
     print(f"Discovery flow completed: {result}")

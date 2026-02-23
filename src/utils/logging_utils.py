@@ -10,7 +10,6 @@ from typing import Optional
 
 import pyprojroot
 from tqdm.contrib.logging import logging_redirect_tqdm
-from src.config import config
 
 
 def get_logger(name: Optional[str] = None, level: Optional[int] = None) -> logging.Logger:
@@ -28,9 +27,8 @@ def get_logger(name: Optional[str] = None, level: Optional[int] = None) -> loggi
     logger = logging.getLogger(module_name)
 
     if not logger.handlers:
-        # Set level based on environment if not specified
         if level is None:
-            level = logging.DEBUG if config.ENVIRONMENT == "development" else logging.INFO
+            level = logging.INFO
         
         logger.setLevel(level)
         formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")

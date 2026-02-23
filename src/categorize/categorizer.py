@@ -1,7 +1,8 @@
 from enum import Enum
 from typing import Any, Dict, Optional, Type
 import json
-from langchain_openai import ChatOpenAI
+from langchain.chat_models import init_chat_model
+from langchain_core.callbacks import get_usage_metadata_callback
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableLambda
 from pydantic import ValidationError
@@ -29,21 +30,15 @@ class Categorizer:
     """
     
     def __init__(self) -> None:
-        llm_kwargs = {
-            "model": categorization_config.OPENAI_MODEL,
-            "temperature": categorization_config.OPENAI_TEMPERATURE,
-            "max_tokens": categorization_config.OPENAI_MAX_OUTPUT_TOKENS,
-            "api_key": categorization_config.OPENAI_API_KEY,
-            "timeout": categorization_config.OPENAI_TIMEOUT,
-            "max_retries": categorization_config.OPENAI_MAX_RETRIES,
-        }
-        
-        logger.debug(f"Categorizer initialized with model: {categorization_config.OPENAI_MODEL}")
-        logger.debug(f"Using temperature: {categorization_config.OPENAI_TEMPERATURE}, max_output_tokens: {categorization_config.OPENAI_MAX_OUTPUT_TOKENS}")
-        logger.debug("Using structured output with automatic Pydantic validation")
-        
-        # Create LLM with structured output
-        llm = ChatOpenAI(**llm_kwargs)
+        llm = init_chat_model(
+            categorization_config.LLM_MODEL,
+            temperature=categorization_config.LLM_TEMPERATURE,
+            max_tokens=categorization_config.LLM_MAX_OUTPUT_TOKENS,
+            timeout=categorization_config.LLM_TIMEOUT,
+            max_retries=categorization_config.LLM_MAX_RETRIES,
+            api_key=categorization_config.LLM_API_KEY,
+        )
+        logger.debug(f"Categorizer initialized with model: {categorization_config.LLM_MODEL}")
         llm_structured = llm.with_structured_output(CategorizationOutput, include_raw=True)
         
         # Create prompt template from separate prompt file
@@ -59,7 +54,7 @@ class Categorizer:
                 "entity_types": RunnableLambda(lambda _: self._get_enum_guidance(EntityType)),
                 "sentiment_options": RunnableLambda(lambda _: self._get_enum_guidance(SentimentLevel)),
                 "topic_categories": RunnableLambda(lambda _: self._get_enum_guidance(TopicCategory)),
-                "output_budget_tokens": lambda _: categorization_config.OPENAI_MAX_OUTPUT_TOKENS,
+                "output_budget_tokens": lambda _: categorization_config.LLM_MAX_OUTPUT_TOKENS,
                 "title": lambda x: x["title"],
                 "content_date": lambda x: x["content_date"],
                 "content": lambda x: x["content"],
@@ -123,24 +118,20 @@ class Categorizer:
                 logger.info(f"Retrying categorization for {id}: has_failed_output={bool(previous_failed_output)}")
             logger.debug(f"Starting categorization for content (id: {id})")
             logger.debug(f"Processing content: {len(categorization_input.content)} chars")
-            
-            # Invoke chain with structured output (automatic validation & retry)
-            response = self.chain.invoke({
-                "title": categorization_input.title,
-                "content_date": categorization_input.content_date,
-                "content": categorization_input.content,
-                "previous_error": previous_error,
-                "previous_failed_output": previous_failed_output
-            })
-            
-            # Extract parsed result and token usage
+
+            with get_usage_metadata_callback() as usage_cb:
+                response = self.chain.invoke({
+                    "title": categorization_input.title,
+                    "content_date": categorization_input.content_date,
+                    "content": categorization_input.content,
+                    "previous_error": previous_error,
+                    "previous_failed_output": previous_failed_output
+                })
+
             result = response["parsed"]
-            raw_response = response["raw"]
-            
-            # Extract token usage
-            token_usage = {}
-            if usage := getattr(raw_response, 'usage_metadata', None):
-                token_usage = {k: usage.get(k, 0) for k in ['input_tokens', 'output_tokens']}
+            usage = next(iter(usage_cb.usage_metadata.values()), {})
+            token_usage = {"input_tokens": usage.get("input_tokens", 0), "output_tokens": usage.get("output_tokens", 0)}
+            if token_usage["input_tokens"] or token_usage["output_tokens"]:
                 logger.info(f"LLM token usage for {id}: {token_usage}")
             
             logger.debug(f"LLM response received: {len(result.entities)} entities")
@@ -175,7 +166,7 @@ class Categorizer:
         
         # Extract metadata (for state updates only)
         metadata = CategorizeStageMetadata(
-            model_used=categorization_config.OPENAI_MODEL,
+            model_used=categorization_config.LLM_MODEL,
             input_tokens=token_usage.get('input_tokens', 0),
             output_tokens=token_usage.get('output_tokens', 0)
         ).model_dump()
