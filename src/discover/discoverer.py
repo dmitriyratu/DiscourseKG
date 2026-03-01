@@ -74,7 +74,7 @@ class Discoverer:
                     if article.date_score is None or article.date_score < DateVoter.THRESHOLD:
                         continue
                     
-                    if manager.get_by_source_url(article.url):
+                    if manager.get_state_by_source_url(article.url):
                         duplicates_skipped += 1
                         continue
                     

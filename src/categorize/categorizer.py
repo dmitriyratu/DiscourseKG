@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import Any, Dict, Optional, Type
-import json
+
 from langchain.chat_models import init_chat_model
 from langchain_core.callbacks import get_usage_metadata_callback
 from langchain_core.prompts import ChatPromptTemplate
@@ -55,6 +55,7 @@ class Categorizer:
                 "sentiment_options": RunnableLambda(lambda _: self._get_enum_guidance(SentimentLevel)),
                 "topic_categories": RunnableLambda(lambda _: self._get_enum_guidance(TopicCategory)),
                 "output_budget_tokens": lambda _: categorization_config.LLM_MAX_OUTPUT_TOKENS,
+                "matched_speakers": lambda x: self._format_matched_speakers(x["matched_speakers"]),
                 "title": lambda x: x["title"],
                 "content_date": lambda x: x["content_date"],
                 "content": lambda x: x["content"],
@@ -70,6 +71,24 @@ class Categorizer:
     def _get_enum_guidance(self, enum_class: Type[Enum]) -> str:
         """Generate guidance text from enum descriptions"""
         return "\n".join(f"  {item.value}: {item.description}" for item in enum_class)
+
+    def _format_matched_speakers(self, matched_speakers: Dict[str, str]) -> str:
+        """Format matched speakers as id: display_name lines"""
+        return "\n".join(f"  {speaker_id}: {display_name}" for speaker_id, display_name in matched_speakers.items())
+
+    def _validate_speaker_ids(self, result: CategorizationOutput, valid_ids: Dict[str, str]) -> None:
+        """Ensure all mention speaker IDs are in matched_speakers."""
+        valid = set(valid_ids)
+        invalid = []
+        for entity in result.entities:
+            for mention in entity.mentions:
+                if mention.speaker not in valid:
+                    invalid.append(mention.speaker)
+        if invalid:
+            raise ValueError(
+                f"LLM used invalid speaker IDs {set(invalid)}; valid: {list(valid)}. "
+                "Use exact speaker_id from TRACKED SPEAKERS."
+            )
     
     def _get_field_guidance(self) -> str:
         """Generate guidance text from CategorizationInput schema"""
@@ -83,17 +102,8 @@ class Categorizer:
         
         error_context = "\n\n*** PREVIOUS ATTEMPT FAILED ***\n\n"
         
-        # Include the failed output if available
         if failed_output:
-            try:
-                if isinstance(failed_output, str):
-                    formatted_output = failed_output
-                else:
-                    formatted_output = json.dumps(failed_output, indent=2)
-                
-                error_context += f"Your previous output:\n{formatted_output}\n\n"
-            except Exception as e:
-                logger.warning(f"Failed to format failed_output: {e}")
+            error_context += f"Your previous output:\n{failed_output}\n\n"
         
         error_context += f"Validation error:\n{error_message}\n\n"
         error_context += "Fix the validation errors and try again. Keep all correct parts and only fix what's wrong.\n"
@@ -112,7 +122,7 @@ class Categorizer:
         if not categorization_input.content:
             raise ValueError("No content found in categorization input")
         
-        response = None  # Initialize for exception handling
+        response = None
         try:
             if previous_error:
                 logger.info(f"Retrying categorization for {id}: has_failed_output={bool(previous_failed_output)}")
@@ -124,11 +134,18 @@ class Categorizer:
                     "title": categorization_input.title,
                     "content_date": categorization_input.content_date,
                     "content": categorization_input.content,
+                    "matched_speakers": categorization_input.matched_speakers,
                     "previous_error": previous_error,
                     "previous_failed_output": previous_failed_output
                 })
 
             result = response["parsed"]
+            try:
+                self._validate_speaker_ids(result, categorization_input.matched_speakers)
+            except ValueError as e:
+                if response and response.get("raw"):
+                    e.failed_output = response["raw"].content
+                raise
             usage = next(iter(usage_cb.usage_metadata.values()), {})
             token_usage = {"input_tokens": usage.get("input_tokens", 0), "output_tokens": usage.get("output_tokens", 0)}
             if token_usage["input_tokens"] or token_usage["output_tokens"]:
@@ -154,9 +171,8 @@ class Categorizer:
                                'content_length': len(categorization_input.content)})
             raise
     
-    def _create_result(self, id: str, categorization_data: CategorizationOutput, token_usage: Dict[str, int] = {}) -> StageResult:
+    def _create_result(self, id: str, categorization_data: CategorizationOutput, token_usage: Optional[Dict[str, int]] = None) -> StageResult:
         """Helper to create StageResult with separated artifact and metadata."""
-        # Build artifact (what gets persisted)
         artifact = CategorizationResult(
             id=id,
             success=True,
@@ -165,10 +181,11 @@ class Categorizer:
         )
         
         # Extract metadata (for state updates only)
+        usage = token_usage or {}
         metadata = CategorizeStageMetadata(
             model_used=categorization_config.LLM_MODEL,
-            input_tokens=token_usage.get('input_tokens', 0),
-            output_tokens=token_usage.get('output_tokens', 0)
+            input_tokens=usage.get('input_tokens', 0),
+            output_tokens=usage.get('output_tokens', 0)
         ).model_dump()
         
         entities_count = len(categorization_data.entities)

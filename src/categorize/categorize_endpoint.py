@@ -22,26 +22,23 @@ class CategorizeEndpoint(BaseEndpoint):
 
         title = state.title
         content_date = state.publication_date
+        matched_speakers = state.matched_speakers
 
-        # Build categorization input
         categorization_input = CategorizationInput(
             title=title,
             content_date=content_date,
-            content=content
+            content=content,
+            matched_speakers=matched_speakers,
         )
-
-        # Build processing context
         processing_context = CategorizeContext(
             id=state.id,
-            categorization_input=categorization_input,
+            categorization_input=categorization_input.model_dump(),
             previous_error=state.error_message,
             previous_failed_output=state.previous_failed_output
         )
 
-        # Execute categorization pipeline - returns StageResult
         stage_result = categorize_content(processing_context)
         
-        # Parse artifact using CategorizationResult model
         categorization_result = CategorizationResult.model_validate(stage_result.artifact)
         
         self.logger.debug(

@@ -15,7 +15,7 @@ class CategorizationConfig(BaseModel):
     LLM_TEMPERATURE: float = Field(default=0.1)
     LLM_TIMEOUT: float = Field(default=60.0)
     LLM_MAX_RETRIES: int = Field(default=2)
-    LLM_MAX_OUTPUT_TOKENS: int = Field(default=10000)
+    LLM_MAX_OUTPUT_TOKENS: int = Field(default=16384)
     LLM_API_KEY: Optional[str] = Field(default_factory=lambda: os.getenv('OPENAI_API_KEY'))
     
     # Quality Filters - Define what constitutes a "substantive" mention

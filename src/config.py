@@ -24,9 +24,9 @@ class Config(BaseModel):
 
     @computed_field
     @property
-    def PIPELINE_STATE_FILE(self) -> str:
-        """Pipeline state file path."""
-        return str(self.PROJECT_ROOT / "data" / "pipeline_state.jsonl")
+    def PIPELINE_STATE_DB(self) -> str:
+        """Pipeline state SQLite database path."""
+        return str(self.PROJECT_ROOT / "data" / "pipeline_state.db")
     
     model_config = {"frozen": True}  # Make immutable
 

@@ -34,6 +34,7 @@ dependencies = [
     "trafilatura>=1.6.0",
     "beautifulsoup4>=4.12.0",
     "lxml>=5.0.0",
+    "peewee>=3.17.0",
 ]
 
 [project.optional-dependencies]
@@ -42,6 +43,7 @@ dev = [
     "black>=22.0.0",
     "flake8>=5.0.0",
     "nest-asyncio>=1.5.0",
+    "types-peewee>=3.18.0",
 ]
 
 [tool.setuptools]

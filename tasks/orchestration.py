@@ -16,4 +16,4 @@ logger = get_logger(__name__)
 def get_items(stage: PipelineStages) -> List[PipelineState]:
     """Get items needing processing for a stage."""
     manager = PipelineStateManager()
-    return manager.get_next_stage_tasks(stage)
+    return manager.get_states_for_stage(stage)

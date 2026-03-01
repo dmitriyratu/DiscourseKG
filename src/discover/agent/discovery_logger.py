@@ -17,7 +17,7 @@ console = Console()
 def get_existing_source_urls() -> set[str]:
     """Return set of source URLs already in pipeline."""
     states = PipelineStateManager().get_all_states()
-    return {s["source_url"] for s in states if s.get("source_url")}
+    return {s.source_url for s in states if s.source_url}
 
 
 class DiscoveryLogger:

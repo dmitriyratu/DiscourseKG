@@ -156,14 +156,17 @@ class Neo4jLoader:
         mention: Dict[str, Any],
     ) -> Dict[str, int]:
         """Load Mention node with Subjects and create relationships."""
+        
         topic = mention.get("topic", "")
 
+        speaker = mention.get("speaker", "")
         mention_query = """
         MATCH (c:Communication {id: $comm_id})
         MATCH (e:Entity {canonical_name: $entity_name})
         CREATE (m:Mention {
             name: $topic,
             topic: $topic,
+            speaker: $speaker,
             context: $context,
             aggregated_sentiment: $aggregated_sentiment
         })
@@ -176,6 +179,7 @@ class Neo4jLoader:
             comm_id=comm_id,
             entity_name=entity_name,
             topic=topic,
+            speaker=speaker,
             context=mention["context"],
             aggregated_sentiment=json.dumps(mention["aggregated_sentiment"]),
         )

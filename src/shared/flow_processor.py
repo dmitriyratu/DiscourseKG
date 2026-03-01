@@ -54,7 +54,7 @@ class FlowProcessor:
             output_file = save_data(state, result_data.output, stage.value)
             
             status = result_data.pipeline_status or PipelineStageStatus.COMPLETED
-            manager.update_stage_status(
+            manager.record_stage_result(
                 status=status,
                 result_data=result_data,
                 file_path=output_file
@@ -65,7 +65,7 @@ class FlowProcessor:
         except Exception as e:
             elapsed = max(0.01, time.time() - start_time)
             self.logger.error(f"Error processing item {state.id} in {stage}: {str(e)}")
-            manager.update_stage_status(
+            manager.record_stage_result(
                 status=PipelineStageStatus.FAILED,
                 result_data=EndpointResponse.for_error(state.id, stage.value, str(e), elapsed)
             )

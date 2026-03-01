@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field, field_validator
 from enum import Enum
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from src.shared.models import StageOperationResult
 
 
@@ -86,21 +86,23 @@ class Subject(BaseModel):
 
 
 class TopicMention(BaseModel):
-    """Single mention of an entity within a specific topic"""
-    
+    """Single mention of an entity by a specific speaker within a specific topic"""
+
+    speaker: str = Field(..., description="Speaker ID (from matched_speakers) who made this mention")
+
     topic: TopicCategory = Field(..., description="Topic category where entity was discussed")
     
     context: str = Field(
         ..., 
         min_length=30, 
         max_length=500,
-        description="Summary of how this entity was discussed in this topic"
+        description="Summary of how this speaker discussed this entity in this topic"
     )
     
     subjects: List[Subject] = Field(
         ...,
         min_items=1,
-        description="List of specific subjects discussed about this entity in this topic"
+        description="List of specific subjects this speaker discussed about this entity in this topic"
     )
 
 
@@ -119,17 +121,17 @@ class EntityMention(BaseModel):
     mentions: List[TopicMention] = Field(
         ...,
         min_items=1,
-        description="List of mentions, one per unique topic where entity was discussed"
+        description="List of mentions, one per (speaker, topic) pair"
     )
     
     @field_validator('mentions')
     @classmethod
-    def validate_unique_topics(cls, mentions: List[TopicMention]) -> List[TopicMention]:
-        """Ensure each topic appears only once per entity"""
-        topics = [m.topic for m in mentions]
-        if len(topics) != len(set(topics)):
-            duplicates = [topic for topic in topics if topics.count(topic) > 1]
-            raise ValueError(f"Duplicate topics found: {set(duplicates)}. Each entity must have ONE mention per unique topic.")
+    def validate_unique_speaker_topic_pairs(cls, mentions: List[TopicMention]) -> List[TopicMention]:
+        """Ensure each (speaker, topic) pair appears only once per entity"""
+        keys: List[Tuple[str, str]] = [(m.speaker, m.topic) for m in mentions]
+        if len(keys) != len(set(keys)):
+            duplicates = {k for k in keys if keys.count(k) > 1}
+            raise ValueError(f"Duplicate (speaker, topic) pairs found: {duplicates}. Each entity must have ONE mention per (speaker, topic).")
         return mentions
 
 
@@ -138,6 +140,7 @@ class CategorizationInput(BaseModel):
     title: str = Field(..., description="Title of the scraped content")
     content_date: str = Field(..., description="Date when the content was created/published")
     content: str = Field(..., description="The summarized content to analyze")
+    matched_speakers: Dict[str, str] = Field(..., description="Tracked speakers present in content: id -> display_name")
 
 
 class CategorizeContext(BaseModel):
