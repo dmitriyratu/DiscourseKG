@@ -9,6 +9,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from src.filter.config import filter_config
 from src.filter.models import LLMFilterOutput, FilterOutput, FilterContext, FilterResult, FilterStageMetadata
 from src.filter.prompts import SYSTEM_PROMPT, USER_PROMPT
+from src.shared.models import ContentType
 from src.shared.pipeline_definitions import StageResult
 from src.utils.logging_utils import get_logger
 
@@ -38,6 +39,7 @@ class Filterer:
                 "tracked_speaker_hints": lambda x: x["tracked_speaker_hints"],
                 "title": lambda x: x["title"],
                 "content_preview": lambda x: x["content_preview"],
+                "content_type_options": lambda _: "\n".join(f"  {item.value}" for item in ContentType),
             }
             | prompt
             | llm_structured
@@ -71,6 +73,7 @@ class Filterer:
         is_relevant = len(matched_speakers) > 0
         
         filter_data = FilterOutput(
+            content_type=llm_result.content_type,
             active_speakers=llm_result.active_speakers,
             matched_speakers=matched_speakers,
             is_relevant=is_relevant,
@@ -84,23 +87,24 @@ class Filterer:
         
         return self._create_result(context.id, filter_data, token_usage)
     
-    def _create_result(self, id: str, filter_data: FilterOutput, token_usage: Dict[str, int] = {}) -> StageResult:
+    def _create_result(self, id: str, filter_data: FilterOutput, token_usage: Dict[str, int]) -> StageResult:
         """Create StageResult with separated artifact and metadata."""
         artifact = FilterResult(
             id=id,
             success=True,
-            data=filter_data,
+            data=filter_data.model_dump(mode='json'),
             error_message=None
         )
         
         metadata = FilterStageMetadata(
+            content_type=filter_data.content_type,
             model_used=filter_config.LLM_MODEL,
             input_tokens=token_usage.get('input_tokens', 0),
             output_tokens=token_usage.get('output_tokens', 0),
             matched_speakers=filter_data.matched_speakers,
         ).model_dump()
         
-        return StageResult(artifact=artifact.model_dump(), metadata=metadata)
+        return StageResult(artifact=artifact.model_dump(mode='json'), metadata=metadata)
 
     def _truncate_to_tokens(self, text: str, max_tokens: int) -> str:
         """Truncate text to a maximum number of tokens."""

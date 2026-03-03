@@ -79,8 +79,8 @@ class Discoverer:
                         continue
                     
                     discovered = DiscoveredArticle.from_article(article, search_url=search_url)
-                    file_path = save_data(discovered, discovered.model_dump(), PipelineStages.DISCOVER.value)
-                    manager.create_state(discovered, run_timestamp, file_path)
+                    file_path = save_data(discovered, discovered.model_dump(mode='json'), PipelineStages.DISCOVER.value)
+                    manager.record_discover_result(discovered, run_timestamp, file_path)
                     existing_urls.add(article.url)
                     all_discovered.append(discovered)
                     logger.debug(f"Discovered: {discovered.id}")
@@ -124,6 +124,6 @@ class Discoverer:
                 success=True,
                 data=discovery_data,
                 error_message=None
-            ).model_dump(),
+            ).model_dump(mode='json'),
             metadata={}
         )

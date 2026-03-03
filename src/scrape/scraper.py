@@ -6,7 +6,7 @@ primary content from HTML.
 """
 
 from src.scrape.engine.extractor_manager import ExtractorManager
-from src.scrape.models import ScrapingResult, ScrapingData, ScrapeContext
+from src.scrape.models import ScrapingResult, ScrapingData, ScrapeContext, ScrapeStageMetadata
 from src.shared.pipeline_definitions import StageResult
 
 
@@ -35,18 +35,10 @@ class Scraper:
 
     def _create_result(self, id: str, scrape_text: str) -> StageResult:
         """Helper to create StageResult with separated artifact and metadata."""
-        scraping_data = ScrapingData(
-            scrape=scrape_text,
-            word_count=len(scrape_text.split()),
-        )
+        word_count = len(scrape_text.split())
+        scraping_data = ScrapingData(scrape=scrape_text, word_count=word_count)
         artifact = ScrapingResult(
-            id=id, 
-            success=True, 
-            data=scraping_data, 
-            error_message=None
-            )
-
-        return StageResult(
-            artifact=artifact.model_dump(), 
-            metadata={}
+            id=id, success=True, data=scraping_data, error_message=None
         )
+        metadata = ScrapeStageMetadata(word_count=word_count).model_dump()
+        return StageResult(artifact=artifact.model_dump(mode='json'), metadata=metadata)

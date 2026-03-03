@@ -5,7 +5,7 @@ Used across the DiscourseKG pipeline to keep stage enums, status
 constants, and shared data models centralized.
 """
 
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 from enum import Enum
 from pydantic import BaseModel, Field, field_validator
 
@@ -15,12 +15,9 @@ from src.shared.models import StageOperationResult
 class PipelineStageStatus(str, Enum):
     """Status of a pipeline stage."""
 
-    PENDING = "PENDING"
-    IN_PROGRESS = "IN_PROGRESS"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     FILTERED = "FILTERED"
-    INVALIDATED = "INVALIDATED"
 
 
 class PipelineStages(str, Enum):
@@ -129,5 +126,5 @@ class EndpointResponse(BaseModel):
     @classmethod
     def for_error(cls, item_id: str, stage: str, error: str, processing_time: float) -> "EndpointResponse":
         """Create response for a failed stage operation."""
-        output = StageOperationResult(id=item_id, success=False, data=None, error_message=error).model_dump()
+        output = StageOperationResult(id=item_id, success=False, data=None, error_message=error).model_dump(mode='json')
         return cls(success=True, stage=stage, output=output, processing_time_seconds=round(processing_time, 2))

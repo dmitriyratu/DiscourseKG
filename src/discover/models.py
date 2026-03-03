@@ -12,12 +12,6 @@ from src.shared.models import StageOperationResult
 from src.utils.string_utils import slugify
 
 
-class DiscoverStageMetadata(BaseModel):
-    """Metadata stored in pipeline state for discover stage."""
-    date_score: int = Field(..., description="Confidence score for the date")
-    date_source: str = Field(..., description="Source of the date (datetime_attr, url_path, etc.)")
-
-
 class DiscoveredArticle(BaseModel):
     """Article discovered by the discovery agent."""
     id: str = Field(..., description="Unique identifier (format: title-slug_urlhash)")
@@ -36,7 +30,7 @@ class DiscoveredArticle(BaseModel):
         return f"{title_slug}_{url_hash}"
 
     @classmethod
-    def from_article(cls, article: Article, search_url: Optional[str] = None) -> Self:
+    def from_article(cls, article: Article, search_url: str) -> Self:
         """Create DiscoveredArticle from Article model."""
         return cls(
             id=cls.generate_id(article),

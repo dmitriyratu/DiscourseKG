@@ -74,4 +74,4 @@ class Grapher:
             f"{graph_data.relationships_created} relationships"
         )
 
-        return StageResult(artifact=artifact.model_dump(), metadata=metadata)
+        return StageResult(artifact=artifact.model_dump(mode='json'), metadata=metadata)

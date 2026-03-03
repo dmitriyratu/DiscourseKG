@@ -12,7 +12,7 @@ from sentence_transformers import SentenceTransformer, util
 from nltk.tokenize import sent_tokenize
 from typing import List, Optional
 
-from src.summarize.models import SummarizationResult, SummarizationData, SummarizeContext
+from src.summarize.models import SummarizationResult, SummarizationData, SummarizeContext, SummarizeStageMetadata
 from src.summarize.config import summarization_config
 from src.shared.pipeline_definitions import StageResult
 
@@ -28,8 +28,14 @@ class Summarizer:
 
     def __init__(self) -> None:
         self.tokenizer = tiktoken.get_encoding(summarization_config.SUMMARIZER_TOKENIZER)
-        self.model = SentenceTransformer(summarization_config.SUMMARIZER_MODEL)
-    
+        self._model: Optional[SentenceTransformer] = None
+
+    @property
+    def model(self) -> SentenceTransformer:
+        if self._model is None:
+            self._model = SentenceTransformer(summarization_config.SUMMARIZER_MODEL)
+        return self._model
+
     def summarize_content(self, processing_context: SummarizeContext) -> StageResult:
         """Summarize text to target token count."""
         id = processing_context.id
@@ -136,7 +142,5 @@ class Summarizer:
             error_message=None
         )
         
-        # No metadata for summarize stage currently
-        metadata = {}
-        
-        return StageResult(artifact=artifact.model_dump(), metadata=metadata)
+        metadata = SummarizeStageMetadata(compression_of_original=compression_of_original).model_dump()
+        return StageResult(artifact=artifact.model_dump(mode='json'), metadata=metadata)

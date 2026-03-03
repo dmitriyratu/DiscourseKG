@@ -1,8 +1,10 @@
 """Data models for categorization domain."""
 
-from pydantic import BaseModel, Field, field_validator
 from enum import Enum
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from src.shared.models import StageOperationResult
 
 
@@ -58,7 +60,8 @@ class SentimentLevel(str, Enum):
 
 class Subject(BaseModel):
     """Specific subject discussed within a topic mention"""
-    
+    model_config = ConfigDict(use_enum_values=True)
+
     subject_name: str = Field(
         ..., 
         min_length=2,
@@ -87,6 +90,7 @@ class Subject(BaseModel):
 
 class TopicMention(BaseModel):
     """Single mention of an entity by a specific speaker within a specific topic"""
+    model_config = ConfigDict(use_enum_values=True)
 
     speaker: str = Field(..., description="Speaker ID (from matched_speakers) who made this mention")
 
@@ -108,7 +112,8 @@ class TopicMention(BaseModel):
 
 class EntityMention(BaseModel):
     """Entity with all its topic mentions"""
-    
+    model_config = ConfigDict(use_enum_values=True)
+
     entity_name: str = Field(
         ..., 
         min_length=1, 
@@ -154,7 +159,7 @@ class CategorizeContext(BaseModel):
 class CategorizationOutput(BaseModel):
     """Output schema for the entire categorization"""
     entities: List[EntityMention] = Field(description="List of entities with their topic mentions")
-    
+
     @field_validator('entities')
     @classmethod
     def validate_unique_entity_names(cls, entities: List[EntityMention]) -> List[EntityMention]:
@@ -168,7 +173,6 @@ class CategorizationOutput(BaseModel):
 
 class CategorizeStageMetadata(BaseModel):
     """Metadata stored in pipeline state for categorize stage."""
-    content_type: Optional[str] = Field(None, description="Type of content (speech, debate, interview, etc.)")
     model_used: str = Field(..., description="LLM model used for categorization")
     input_tokens: int = Field(default=0, description="Input tokens used")
     output_tokens: int = Field(default=0, description="Output tokens used")

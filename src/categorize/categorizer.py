@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from src.categorize.config import categorization_config
 from src.categorize.models import (
-    TopicCategory, EntityType, SentimentLevel, 
+    TopicCategory, EntityType, SentimentLevel,
     EntityMention, TopicMention, Subject, CategorizationInput, CategorizationOutput,
     CategorizationResult, CategorizeContext, CategorizeStageMetadata
 )
@@ -171,7 +171,7 @@ class Categorizer:
                                'content_length': len(categorization_input.content)})
             raise
     
-    def _create_result(self, id: str, categorization_data: CategorizationOutput, token_usage: Optional[Dict[str, int]] = None) -> StageResult:
+    def _create_result(self, id: str, categorization_data: CategorizationOutput, token_usage: Dict[str, int]) -> StageResult:
         """Helper to create StageResult with separated artifact and metadata."""
         artifact = CategorizationResult(
             id=id,
@@ -179,13 +179,10 @@ class Categorizer:
             data=categorization_data,
             error_message=None
         )
-        
-        # Extract metadata (for state updates only)
-        usage = token_usage or {}
         metadata = CategorizeStageMetadata(
             model_used=categorization_config.LLM_MODEL,
-            input_tokens=usage.get('input_tokens', 0),
-            output_tokens=usage.get('output_tokens', 0)
+            input_tokens=token_usage.get('input_tokens', 0),
+            output_tokens=token_usage.get('output_tokens', 0)
         ).model_dump()
         
         entities_count = len(categorization_data.entities)
@@ -193,4 +190,4 @@ class Categorizer:
         
         logger.debug(f"Successfully categorized content: {entities_count} entities, {mentions_count} mentions")
         
-        return StageResult(artifact=artifact.model_dump(), metadata=metadata)
+        return StageResult(artifact=artifact.model_dump(mode='json'), metadata=metadata)

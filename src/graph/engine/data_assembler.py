@@ -5,7 +5,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.config import config
-from src.categorize.models import CategorizationResult, CategorizeStageMetadata
+from src.categorize.models import CategorizationResult
+from src.filter.models import FilterStageMetadata
 from src.graph.config import graph_config
 from src.graph.models import GraphContext
 from src.shared.data_loaders import DataLoader
@@ -24,10 +25,7 @@ class GraphDataAssembler:
 
     def assemble(self, context: GraphContext) -> Dict[str, Any]:
         """Load from all stages, preprocess, and return Neo4j-ready context."""
-        file_paths = {
-            stage: (meta.get("file_path") if isinstance(meta, dict) else getattr(meta, "file_path", None))
-            for stage, meta in context.stages.items()
-        }
+        file_paths = {stage: meta.file_path for stage, meta in context.stages.items()}
 
         categorization_data = self._load_categorization(file_paths)
         communication_data = self._load_communication(file_paths, context)
@@ -48,27 +46,28 @@ class GraphDataAssembler:
         categorization_result = CategorizationResult.model_validate(output)
         if not categorization_result.data:
             return []
-        return [e.model_dump() for e in categorization_result.data.entities]
+        return [e.model_dump(mode='json') for e in categorization_result.data.entities]
 
     def _load_communication(
         self, file_paths: Dict[str, str], context: GraphContext
     ) -> Dict[str, Any]:
         """Load communication data by stitching stage outputs and metadata."""
         scrape_path = file_paths.get(PipelineStages.SCRAPE.value)
-        scrape_output = self.data_loader.load(scrape_path)
+        scrape_output = DataLoader.load(scrape_path)
         scraping_result = ScrapingResult.model_validate(scrape_output)
         scrape_content = scraping_result.data.scrape if scraping_result.data else ""
+        word_count = scraping_result.data.word_count if scraping_result.data else 0
 
         title = context.title or "Unknown"
         content_date = context.publication_date or "Unknown"
 
-        categorize_stage = context.stages.get(PipelineStages.CATEGORIZE.value, {})
-        categorize_metadata_dict = categorize_stage.get("metadata", {}) if isinstance(categorize_stage, dict) else {}
-        if categorize_metadata_dict:
-            categorize_metadata = CategorizeStageMetadata.model_validate(categorize_metadata_dict)
-            content_type = categorize_metadata.content_type or ContentType.UNKNOWN.value
+        filter_stage = context.stages.get(PipelineStages.FILTER.value)
+        filter_metadata_dict = (filter_stage.metadata or {}) if filter_stage else {}
+        if filter_metadata_dict:
+            filter_metadata = FilterStageMetadata.model_validate(filter_metadata_dict)
+            content_type = (filter_metadata.content_type or ContentType.OTHER).value
         else:
-            content_type = ContentType.UNKNOWN.value
+            content_type = ContentType.OTHER.value
 
         summarize_path = file_paths.get(PipelineStages.SUMMARIZE.value)
         was_summarized = False
@@ -89,7 +88,7 @@ class GraphDataAssembler:
             "content_date": content_date,
             "source_url": context.source_url or "",
             "full_text": scrape_content,
-            "word_count": len(scrape_content.split()) if scrape_content else 0,
+            "word_count": word_count,
             "was_summarized": was_summarized,
             "compression_ratio": compression_ratio,
         }

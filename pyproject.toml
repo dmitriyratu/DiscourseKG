@@ -40,9 +40,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
-    "black>=22.0.0",
-    "flake8>=5.0.0",
-    "nest-asyncio>=1.5.0",
+    "ruff>=0.1.0",
     "types-peewee>=3.18.0",
 ]
 

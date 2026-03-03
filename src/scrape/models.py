@@ -5,6 +5,11 @@ from typing import Optional
 from src.shared.models import StageOperationResult
 
 
+class ScrapeStageMetadata(BaseModel):
+    """Metadata stored in pipeline state for scrape stage."""
+    word_count: int = Field(..., description="Word count of scraped content")
+
+
 class ScrapeContext(BaseModel):
     """Processing context for scraping operation."""
     id: str = Field(..., description="Unique identifier for the item")

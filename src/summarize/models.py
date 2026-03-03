@@ -5,6 +5,11 @@ from typing import Dict, Any, Optional
 from src.shared.models import StageOperationResult
 
 
+class SummarizeStageMetadata(BaseModel):
+    """Metadata stored in pipeline state for summarize stage."""
+    compression_of_original: float = Field(..., description="Ratio of summary to original (1 = no compression)")
+
+
 class SummarizationData(BaseModel):
     """Summarized content data. When compression_of_original=1, summarize is null (use scrape)."""
     summarize: Optional[str] = Field(None, description="The summarized text (null when no compression)")
