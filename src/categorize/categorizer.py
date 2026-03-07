@@ -1,5 +1,6 @@
+import json
 from enum import Enum
-from typing import Any, Dict, Optional, Type
+from typing import Dict, Optional, Type
 
 from langchain.chat_models import init_chat_model
 from langchain_core.callbacks import get_usage_metadata_callback
@@ -9,26 +10,21 @@ from pydantic import ValidationError
 
 from src.categorize.config import categorization_config
 from src.categorize.models import (
-    TopicCategory, EntityType, SentimentLevel,
-    EntityMention, TopicMention, Subject, CategorizationInput, CategorizationOutput,
-    CategorizationResult, CategorizeContext, CategorizeStageMetadata
+    TopicCategory, EntityType, SentimentLevel, CategorizationOutput,
+    CategorizationResult, CategorizeContext, CategorizeStageMetadata,
 )
-from src.utils.logging_utils import get_logger
-from src.shared.pipeline_definitions import PipelineStages, StageResult
+from src.shared.models import TokenUsage, LLMValidationError
+from src.shared.pipeline_definitions import StageResult
 from src.categorize.prompts import SYSTEM_PROMPT, USER_PROMPT
+from src.shared.prompts import CANONICAL_NAMING_RULE
+from src.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
 
 class Categorizer:
-    """
-    Categorizer implementation using LangChain for structured output parsing.
-    
-    This class handles the categorization of speech/communication data for the
-    knowledge graph platform, creating a hierarchical structure of categories
-    with entities and supporting quotes.
-    """
-    
+    """Categorizes pre-extracted entity data into structured topics, claims, and sentiment."""
+
     def __init__(self) -> None:
         llm = init_chat_model(
             categorization_config.LLM_MODEL,
@@ -40,154 +36,123 @@ class Categorizer:
         )
         logger.debug(f"Categorizer initialized with model: {categorization_config.LLM_MODEL}")
         llm_structured = llm.with_structured_output(CategorizationOutput, include_raw=True)
-        
-        # Create prompt template from separate prompt file
+
+        entity_guidance = self._get_enum_guidance(EntityType)
+        topic_guidance = self._get_enum_guidance(TopicCategory)
+        sentiment_guidance = self._get_enum_guidance(SentimentLevel)
+
         prompt = ChatPromptTemplate.from_messages([
             ("system", SYSTEM_PROMPT),
             ("user", USER_PROMPT)
         ])
-        
-        # Create LCEL chain with automatic enum guidance injection
+
         self.chain = (
             {
-                "field_descriptions": RunnableLambda(lambda _: self._get_field_guidance()),
-                "entity_types": RunnableLambda(lambda _: self._get_enum_guidance(EntityType)),
-                "sentiment_options": RunnableLambda(lambda _: self._get_enum_guidance(SentimentLevel)),
-                "topic_categories": RunnableLambda(lambda _: self._get_enum_guidance(TopicCategory)),
-                "output_budget_tokens": lambda _: categorization_config.LLM_MAX_OUTPUT_TOKENS,
-                "matched_speakers": lambda x: self._format_matched_speakers(x["matched_speakers"]),
+                "entity_types": RunnableLambda(lambda _: entity_guidance),
+                "sentiment_options": RunnableLambda(lambda _: sentiment_guidance),
+                "topic_categories": RunnableLambda(lambda _: topic_guidance),
+                "matched_speakers": lambda x: x["matched_speakers"],
+                "canonical_naming_rule": lambda _: CANONICAL_NAMING_RULE,
                 "title": lambda x: x["title"],
                 "content_date": lambda x: x["content_date"],
-                "content": lambda x: x["content"],
-                "previous_error_text": lambda x: self._format_error_text(
-                    x.get("previous_error"), 
-                    x.get("previous_failed_output")
-                )
+                "entities_json": lambda x: x["entities_json"],
+                "previous_error_text": lambda x: x.get("previous_error_text", ""),
             }
             | prompt
             | llm_structured
         )
-    
+
     def _get_enum_guidance(self, enum_class: Type[Enum]) -> str:
-        """Generate guidance text from enum descriptions"""
         return "\n".join(f"  {item.value}: {item.description}" for item in enum_class)
 
     def _format_matched_speakers(self, matched_speakers: Dict[str, str]) -> str:
-        """Format matched speakers as id: display_name lines"""
-        return "\n".join(f"  {speaker_id}: {display_name}" for speaker_id, display_name in matched_speakers.items())
+        return "\n".join(f"  {sid}: {name}" for sid, name in matched_speakers.items())
 
     def _validate_speaker_ids(self, result: CategorizationOutput, valid_ids: Dict[str, str]) -> None:
-        """Ensure all mention speaker IDs are in matched_speakers."""
         valid = set(valid_ids)
-        invalid = []
-        for entity in result.entities:
-            for mention in entity.mentions:
-                if mention.speaker not in valid:
-                    invalid.append(mention.speaker)
+        invalid = [t.speaker for e in result.entities for t in e.topics if t.speaker not in valid]
         if invalid:
             raise ValueError(
                 f"LLM used invalid speaker IDs {set(invalid)}; valid: {list(valid)}. "
                 "Use exact speaker_id from TRACKED SPEAKERS."
             )
-    
-    def _get_field_guidance(self) -> str:
-        """Generate guidance text from CategorizationInput schema"""
-        return "\n".join(f"  {name}: {field.description}" 
-                        for name, field in CategorizationInput.model_fields.items())
-    
+
     def _format_error_text(self, error_message: Optional[str] = None, failed_output: Optional[str] = None) -> str:
-        """Format previous error message and failed output for the prompt"""
         if not error_message:
             return ""
-        
-        error_context = "\n\n*** PREVIOUS ATTEMPT FAILED ***\n\n"
-        
+        parts = ["\n\n*** PREVIOUS ATTEMPT FAILED ***\n\n"]
         if failed_output:
-            error_context += f"Your previous output:\n{failed_output}\n\n"
-        
-        error_context += f"Validation error:\n{error_message}\n\n"
-        error_context += "Fix the validation errors and try again. Keep all correct parts and only fix what's wrong.\n"
-        
-        return error_context
-    
+            parts.append(f"Your previous output:\n{failed_output}\n\n")
+        parts.append(f"Validation error:\n{error_message}\n\n")
+        parts.append("Fix the validation errors and try again. Keep all correct parts and only fix what's wrong.\n")
+        return "".join(parts)
+
     def categorize_content(self, processing_context: CategorizeContext) -> StageResult:
-        """Categorize content from processing context."""
-        
-        # Extract what we need from the processing context
+        """Categorize pre-extracted entities in a single LLM call."""
         id = processing_context.id
-        categorization_input = processing_context.categorization_input
-        previous_error = processing_context.previous_error
-        previous_failed_output = processing_context.previous_failed_output
-        
-        if not categorization_input.content:
-            raise ValueError("No content found in categorization input")
-        
-        response = None
-        try:
-            if previous_error:
-                logger.info(f"Retrying categorization for {id}: has_failed_output={bool(previous_failed_output)}")
-            logger.debug(f"Starting categorization for content (id: {id})")
-            logger.debug(f"Processing content: {len(categorization_input.content)} chars")
+        cat_input = processing_context.categorization_input
 
-            with get_usage_metadata_callback() as usage_cb:
-                response = self.chain.invoke({
-                    "title": categorization_input.title,
-                    "content_date": categorization_input.content_date,
-                    "content": categorization_input.content,
-                    "matched_speakers": categorization_input.matched_speakers,
-                    "previous_error": previous_error,
-                    "previous_failed_output": previous_failed_output
-                })
+        if not cat_input.entities:
+            raise ValueError("No entities found in categorization input")
 
-            result = response["parsed"]
+        if processing_context.previous_error:
+            logger.info(f"Retrying categorization for {id}")
+
+        entities_json = json.dumps(
+            [e.model_dump(mode="json") for e in cat_input.entities],
+            indent=2,
+        )
+
+        result, usage = self._invoke(
+            title=cat_input.title,
+            content_date=cat_input.content_date,
+            matched_speakers=cat_input.matched_speakers,
+            entities_json=entities_json,
+            previous_error=processing_context.previous_error,
+            previous_failed_output=processing_context.previous_failed_output,
+        )
+
+        return self._create_result(id, result, usage)
+
+    def _invoke(
+        self,
+        title: str,
+        content_date: str,
+        matched_speakers: Dict[str, str],
+        entities_json: str,
+        previous_error: Optional[str] = None,
+        previous_failed_output: Optional[str] = None,
+    ) -> tuple[CategorizationOutput, TokenUsage]:
+        """Invoke chain once. Returns (parsed result, token_usage)."""
+        with get_usage_metadata_callback() as usage_cb:
+            response = None
             try:
-                self._validate_speaker_ids(result, categorization_input.matched_speakers)
-            except ValueError as e:
-                if response and response.get("raw"):
-                    e.failed_output = response["raw"].content
-                raise
-            usage = next(iter(usage_cb.usage_metadata.values()), {})
-            token_usage = {"input_tokens": usage.get("input_tokens", 0), "output_tokens": usage.get("output_tokens", 0)}
-            if token_usage["input_tokens"] or token_usage["output_tokens"]:
-                logger.info(f"LLM token usage for {id}: {token_usage}")
-            
-            logger.debug(f"LLM response received: {len(result.entities)} entities")
-            
-            return self._create_result(id, result, token_usage)
-            
-        except ValidationError as e:
-            # Attach failed output to exception for retry context
-            if response and response.get('raw'):
-                e.failed_output = response['raw'].content
-                failed_output_length = len(str(e.failed_output)) if e.failed_output else 0
-                logger.info(f"Captured failed output for {id} ({failed_output_length} chars) - will be available on retry")
-            else:
-                e.failed_output = None
-                logger.warning(f"No raw output available to capture for {id}")
-            
-            logger.error(f"Validation error for {id}: {str(e)}", 
-                        extra={'stage': PipelineStages.CATEGORIZE.value, 
-                               'error_type': 'validation_error', 
-                               'content_length': len(categorization_input.content)})
-            raise
-    
-    def _create_result(self, id: str, categorization_data: CategorizationOutput, token_usage: Dict[str, int]) -> StageResult:
-        """Helper to create StageResult with separated artifact and metadata."""
+                response = self.chain.invoke({
+                    "matched_speakers": self._format_matched_speakers(matched_speakers),
+                    "title": title,
+                    "content_date": content_date,
+                    "entities_json": entities_json,
+                    "previous_error_text": self._format_error_text(previous_error, previous_failed_output),
+                })
+                self._validate_speaker_ids(response["parsed"], matched_speakers)
+                raw = next(iter(usage_cb.usage_metadata.values()), {})
+                usage = TokenUsage(
+                    input_tokens=raw.get("input_tokens", 0),
+                    output_tokens=raw.get("output_tokens", 0),
+                )
+                return response["parsed"], usage
+            except (ValidationError, ValueError) as e:
+                raw_content = response["raw"].content if response and response.get("raw") else None
+                raise LLMValidationError(str(e), failed_output=raw_content)
+
+    def _create_result(self, id: str, categorization_data: CategorizationOutput, token_usage: TokenUsage) -> StageResult:
         artifact = CategorizationResult(
-            id=id,
-            success=True,
-            data=categorization_data,
-            error_message=None
+            id=id, success=True, data=categorization_data, error_message=None
         )
         metadata = CategorizeStageMetadata(
             model_used=categorization_config.LLM_MODEL,
-            input_tokens=token_usage.get('input_tokens', 0),
-            output_tokens=token_usage.get('output_tokens', 0)
+            input_tokens=token_usage.input_tokens,
+            output_tokens=token_usage.output_tokens,
         ).model_dump()
-        
-        entities_count = len(categorization_data.entities)
-        mentions_count = sum(len(entity.mentions) for entity in categorization_data.entities)
-        
-        logger.debug(f"Successfully categorized content: {entities_count} entities, {mentions_count} mentions")
-        
+        logger.debug(f"Successfully categorized: {len(categorization_data.entities)} entities")
         return StageResult(artifact=artifact.model_dump(mode='json'), metadata=metadata)

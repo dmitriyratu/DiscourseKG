@@ -8,7 +8,7 @@ from src.config import config
 from src.categorize.models import CategorizationResult
 from src.filter.models import FilterStageMetadata
 from src.graph.config import graph_config
-from src.graph.models import GraphContext
+from src.graph.models import AssembledGraphData, CommunicationData, GraphContext, SpeakerNode
 from src.shared.data_loaders import DataLoader
 from src.shared.models import ContentType
 from src.shared.pipeline_definitions import PipelineStages
@@ -23,7 +23,7 @@ logger = get_logger(__name__)
 class GraphDataAssembler:
     """Loads and stitches data from pipeline stages for Neo4j ingestion."""
 
-    def assemble(self, context: GraphContext) -> Dict[str, Any]:
+    def assemble(self, context: GraphContext) -> AssembledGraphData:
         """Load from all stages, preprocess, and return Neo4j-ready context."""
         file_paths = {stage: meta.file_path for stage, meta in context.stages.items()}
 
@@ -32,12 +32,12 @@ class GraphDataAssembler:
         speakers_data = self._load_speakers(context.matched_speakers)
         preprocessed_entities = self._preprocess_entities(categorization_data)
 
-        return {
-            "id": communication_data["id"],
-            "speakers": speakers_data,
-            "communication": communication_data,
-            "entities": preprocessed_entities,
-        }
+        return AssembledGraphData(
+            id=communication_data.id,
+            speakers=speakers_data,
+            communication=communication_data,
+            entities=preprocessed_entities,
+        )
 
     def _load_categorization(self, file_paths: Dict[str, str]) -> List[Dict[str, Any]]:
         """Load categorization data (entities)."""
@@ -50,7 +50,7 @@ class GraphDataAssembler:
 
     def _load_communication(
         self, file_paths: Dict[str, str], context: GraphContext
-    ) -> Dict[str, Any]:
+    ) -> CommunicationData:
         """Load communication data by stitching stage outputs and metadata."""
         scrape_path = file_paths.get(PipelineStages.SCRAPE.value)
         scrape_output = DataLoader.load(scrape_path)
@@ -81,19 +81,19 @@ class GraphDataAssembler:
                 compression_ratio = compression_of_original
                 was_summarized = compression_of_original < 1.0
 
-        return {
-            "id": scraping_result.id,
-            "title": title,
-            "content_type": content_type,
-            "content_date": content_date,
-            "source_url": context.source_url or "",
-            "full_text": scrape_content,
-            "word_count": word_count,
-            "was_summarized": was_summarized,
-            "compression_ratio": compression_ratio,
-        }
+        return CommunicationData(
+            id=scraping_result.id,
+            title=title,
+            content_type=content_type,
+            content_date=content_date,
+            source_url=context.source_url or "",
+            full_text=scrape_content,
+            word_count=word_count,
+            was_summarized=was_summarized,
+            compression_ratio=compression_ratio,
+        )
 
-    def _load_speakers(self, matched_speakers: Dict[str, str]) -> List[Dict[str, Any]]:
+    def _load_speakers(self, matched_speakers: Dict[str, str]) -> List[SpeakerNode]:
         """Load speaker metadata from speakers.json for each matched speaker id."""
         if not matched_speakers:
             raise ValueError("No matched speakers provided")
@@ -109,15 +109,15 @@ class GraphDataAssembler:
                 continue
             speaker_obj = registry.speakers[speaker_id]
             industry = getattr(speaker_obj.industry, "value", speaker_obj.industry)
-            results.append({
-                "name_id": speaker_id,
-                "name": display_name,
-                "display_name": display_name,
-                "role": speaker_obj.role,
-                "organization": speaker_obj.organization,
-                "industry": industry,
-                "region": speaker_obj.region,
-            })
+            results.append(SpeakerNode(
+                name_id=speaker_id,
+                name=display_name,
+                display_name=display_name,
+                role=speaker_obj.role,
+                organization=speaker_obj.organization,
+                industry=industry,
+                region=speaker_obj.region,
+            ))
 
         if not results:
             raise ValueError(f"None of the matched speakers found in registry: {list(matched_speakers.keys())}")
@@ -134,25 +134,25 @@ class GraphDataAssembler:
             raise
 
     def _compute_aggregated_sentiment(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Compute aggregated sentiment for each topic mention from its subjects."""
+        """Compute aggregated sentiment for each topic from its claims."""
         for entity in entities:
-            for mention in entity.get("mentions", []):
-                subjects = mention.get("subjects", [])
-                if not subjects:
-                    mention["aggregated_sentiment"] = {}
+            for topic in entity.get("topics", []):
+                claims = topic.get("claims", [])
+                if not claims:
+                    topic["aggregated_sentiment"] = {}
                     continue
 
                 sentiment_counts = {}
-                for subject in subjects:
-                    sentiment_value = subject.get("sentiment")
+                for claim in claims:
+                    sentiment_value = claim.get("sentiment")
                     if sentiment_value:
                         sentiment_counts[sentiment_value] = sentiment_counts.get(sentiment_value, 0) + 1
 
-                total_subjects = len(subjects)
-                mention["aggregated_sentiment"] = {
+                total_claims = len(claims)
+                topic["aggregated_sentiment"] = {
                     sentiment: {
                         "count": count,
-                        "prop": round(count / total_subjects, graph_config.DECIMAL_PRECISION),
+                        "prop": round(count / total_claims, graph_config.DECIMAL_PRECISION),
                     }
                     for sentiment, count in sentiment_counts.items()
                 }
@@ -166,7 +166,7 @@ class GraphDataAssembler:
                 raise ValueError(f"Entity missing entity_name: {entity}")
             if not entity.get("entity_type"):
                 raise ValueError(f"Entity missing entity_type: {entity}")
-            if not entity.get("mentions"):
-                raise ValueError(f"Entity has no mentions: {entity['entity_name']}")
+            if not entity.get("topics"):
+                raise ValueError(f"Entity has no topics: {entity['entity_name']}")
 
         return entities

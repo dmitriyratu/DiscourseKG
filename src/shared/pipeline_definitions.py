@@ -5,9 +5,9 @@ Used across the DiscourseKG pipeline to keep stage enums, status
 constants, and shared data models centralized.
 """
 
-from typing import Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 from enum import Enum
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, computed_field
 
 from src.shared.models import StageOperationResult
 
@@ -27,6 +27,7 @@ class PipelineStages(str, Enum):
     SCRAPE = "scrape"
     FILTER = "filter"
     SUMMARIZE = "summarize"
+    EXTRACT = "extract"
     CATEGORIZE = "categorize"
     GRAPH = "graph"
 
@@ -38,15 +39,18 @@ class PipelineConfig:
         PipelineStages.DISCOVER: PipelineStages.SCRAPE,
         PipelineStages.SCRAPE: PipelineStages.FILTER,
         PipelineStages.FILTER: PipelineStages.SUMMARIZE,
-        PipelineStages.SUMMARIZE: PipelineStages.CATEGORIZE,
+        PipelineStages.SUMMARIZE: PipelineStages.EXTRACT,
+        PipelineStages.EXTRACT: PipelineStages.CATEGORIZE,
         PipelineStages.CATEGORIZE: PipelineStages.GRAPH,
         PipelineStages.GRAPH: None,
     }
 
     @classmethod
-    def get_next_stage(cls, current_stage: str) -> Optional[str]:
-        """Get the next stage after the current one."""
-        return cls.STAGE_FLOW.get(current_stage)
+    def get_next_stage(cls, current_stage: str | None, *, is_filtered: bool = False) -> Optional[str]:
+        """Get the next stage after the current one. Returns None if pipeline is filtered (dead-end)."""
+        if is_filtered:
+            return None
+        return cls.STAGE_FLOW.get(current_stage) if current_stage else None
 
 
 class StageResult(BaseModel):
@@ -54,6 +58,17 @@ class StageResult(BaseModel):
     
     artifact: Dict[str, Any] = Field(..., description="Data to persist as stage output file")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Metadata for pipeline state updates only")
+
+
+class ArticleFields(BaseModel):
+    """Article-level fields denormalized onto each stage row."""
+
+    title: Optional[str] = Field(None, description="Article title")
+    publication_date: Optional[str] = Field(None, description="Publication date (YYYY-MM-DD)")
+    source_url: Optional[str] = Field(None, description="Article URL")
+    search_url: Optional[str] = Field(None, description="Search page URL")
+    run_timestamp: Optional[str] = Field(None, description="Timestamp when scraped (YYYY-MM-DD_HH:MM:SS)")
+    created_at: Optional[str] = Field(None, description="ISO timestamp when record was created")
 
 
 class StageMetadata(BaseModel):
@@ -71,7 +86,6 @@ class PipelineState(BaseModel):
     
     # Identity & Content (what is this?)
     id: str = Field(..., description="Unique ID from raw data")
-    matched_speakers: Dict[str, str] = Field(default_factory=dict, description="Matched speakers: id -> display_name")
     publication_date: Optional[str] = Field(None, description="Publication date (YYYY-MM-DD)")
     title: Optional[str] = Field(None, description="Article title")
     
@@ -95,10 +109,19 @@ class PipelineState(BaseModel):
     # Stage-specific data (detailed breakdown)
     stages: Dict[str, StageMetadata] = Field(default_factory=dict, description="Per-stage metadata")
 
-    @field_validator("matched_speakers", mode="before")
-    @classmethod
-    def _empty_dict_if_none(cls, v: Any) -> Dict[str, str]:
-        return v if v is not None else {}
+    @computed_field
+    @property
+    def matched_speakers(self) -> Dict[str, str]:
+        """From filter stage metadata."""
+        meta = (self.stages.get("filter") or StageMetadata()).metadata
+        return meta.get("matched_speakers") or {}
+
+    @computed_field
+    @property
+    def active_speakers(self) -> List[str]:
+        """From filter stage metadata."""
+        meta = (self.stages.get("filter") or StageMetadata()).metadata
+        return meta.get("active_speakers") or []
 
     def get_current_file_path(self) -> Optional[str]:
         """Get file path for the latest completed stage"""
@@ -111,6 +134,17 @@ class PipelineState(BaseModel):
         if stage in self.stages:
             return self.stages[stage].file_path
         return None
+
+    def article_fields(self) -> ArticleFields:
+        """Article-level fields for denormalization onto stage rows."""
+        return ArticleFields(
+            title=self.title,
+            publication_date=self.publication_date,
+            source_url=self.source_url,
+            search_url=self.search_url,
+            run_timestamp=self.run_timestamp,
+            created_at=self.created_at,
+        )
 
 
 class EndpointResponse(BaseModel):

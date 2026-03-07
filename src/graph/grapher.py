@@ -55,12 +55,9 @@ class Grapher:
 
         return self._create_result(id, stats)
 
-    def _create_result(self, id: str, stats: dict) -> StageResult:
+    def _create_result(self, id: str, stats: GraphData) -> StageResult:
         """Create StageResult with separated artifact and metadata."""
-        graph_data = GraphData(
-            nodes_created=stats["nodes_created"],
-            relationships_created=stats["relationships_created"],
-        )
+        graph_data = stats
         artifact = GraphResult(
             id=id,
             success=True,

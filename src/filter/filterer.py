@@ -1,7 +1,6 @@
 """Filterer implementation using LangChain for structured speaker identification."""
 
 import tiktoken
-from typing import Dict
 from langchain.chat_models import init_chat_model
 from langchain_core.callbacks import get_usage_metadata_callback
 from langchain_core.prompts import ChatPromptTemplate
@@ -9,7 +8,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from src.filter.config import filter_config
 from src.filter.models import LLMFilterOutput, FilterOutput, FilterContext, FilterResult, FilterStageMetadata
 from src.filter.prompts import SYSTEM_PROMPT, USER_PROMPT
-from src.shared.models import ContentType
+from src.shared.prompts import CANONICAL_NAMING_RULE
+from src.shared.models import ContentType, TokenUsage
 from src.shared.pipeline_definitions import StageResult
 from src.utils.logging_utils import get_logger
 
@@ -37,8 +37,10 @@ class Filterer:
         self.chain = (
             {
                 "tracked_speaker_hints": lambda x: x["tracked_speaker_hints"],
+                "canonical_naming_rule": lambda _: CANONICAL_NAMING_RULE,
                 "title": lambda x: x["title"],
                 "content_preview": lambda x: x["content_preview"],
+                "content_types": lambda _: ", ".join(ct.value for ct in ContentType),
                 "content_type_options": lambda _: "\n".join(f"  {item.value}" for item in ContentType),
             }
             | prompt
@@ -60,8 +62,11 @@ class Filterer:
 
         llm_result = response["parsed"]
         usage = next(iter(usage_cb.usage_metadata.values()), {})
-        token_usage = {"input_tokens": usage.get("input_tokens", 0), "output_tokens": usage.get("output_tokens", 0)}
-        if token_usage["input_tokens"] or token_usage["output_tokens"]:
+        token_usage = TokenUsage(
+            input_tokens=usage.get("input_tokens", 0),
+            output_tokens=usage.get("output_tokens", 0),
+        )
+        if token_usage.input_tokens or token_usage.output_tokens:
             logger.info(f"Filter token usage for {context.id}: {token_usage}")
         
         # Compute matched_speakers (id -> display_name) and is_relevant
@@ -87,7 +92,7 @@ class Filterer:
         
         return self._create_result(context.id, filter_data, token_usage)
     
-    def _create_result(self, id: str, filter_data: FilterOutput, token_usage: Dict[str, int]) -> StageResult:
+    def _create_result(self, id: str, filter_data: FilterOutput, token_usage: TokenUsage) -> StageResult:
         """Create StageResult with separated artifact and metadata."""
         artifact = FilterResult(
             id=id,
@@ -99,8 +104,9 @@ class Filterer:
         metadata = FilterStageMetadata(
             content_type=filter_data.content_type,
             model_used=filter_config.LLM_MODEL,
-            input_tokens=token_usage.get('input_tokens', 0),
-            output_tokens=token_usage.get('output_tokens', 0),
+            input_tokens=token_usage.input_tokens,
+            output_tokens=token_usage.output_tokens,
+            active_speakers=filter_data.active_speakers,
             matched_speakers=filter_data.matched_speakers,
         ).model_dump()
         

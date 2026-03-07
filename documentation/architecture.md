@@ -227,7 +227,7 @@ graph LR
     subgraph STAGE4["4. Categorize"]
         STATE4["<b>PipelineState</b><br/>────────────────────<br/>id: unique identifier<br/>────────────────────<br/>latest_completed: categorize<br/>next_stage: graph<br/>────────────────────<br/>file_paths: dict<br/>  • discover: output file<br/>  • scrape: output file<br/>  • summarize: output file<br/>  • categorize: output file"]
         CATEGORIZE["<b>CategorizeEndpoint</b><br/>────────────────────<br/>execute(state)"]
-        CAT_OUT["<b>CategorizationOutput</b><br/>────────────────────<br/>entities: EntityMention[]<br/>  • entity_name: canonical name<br/>  • entity_type: organization/person/etc<br/>  • mentions: TopicMention[]<br/>    - topic: TopicCategory<br/>    - context: summary<br/>    - subjects: Subject[]"]
+        CAT_OUT["<b>CategorizationOutput</b><br/>────────────────────<br/>entities: EntityMention[]<br/>  • entity_name: canonical name<br/>  • entity_type: organization/person/etc<br/>  • topics: Topic[]<br/>    - topic: TopicCategory<br/>    - context: summary<br/>    - claims: Claim[]"]
     end
     
     subgraph STAGE5["5. Graph"]
@@ -320,14 +320,14 @@ Multi-level error handling for resilience:
 
 ## Knowledge Graph Topology
 
-The categorization stage extracts entities with hierarchical structure: `EntityMention` contains multiple `TopicMention` (one per topic), each containing multiple `Subject` (specific aspects discussed). The graph stage uses `Grapher` to load data from multiple stages, stitch communication metadata, preprocess entities (computing aggregated sentiment from subjects, validating structure), and load into Neo4j. The resulting graph follows a hierarchical structure with 5 node types and 4 relationship types, enabling queries like "How does Trump discuss Bitcoin?" or "Show all entities with positive sentiment in Technology topics."
+The categorization stage extracts entities with hierarchical structure: `EntityMention` contains multiple `Topic` (one per topic), each containing multiple `Claim` (specific claims made). The graph stage uses `Grapher` to load data from multiple stages, stitch communication metadata, preprocess entities (computing aggregated sentiment from claims, validating structure), and load into Neo4j. The resulting graph follows a hierarchical structure with 5 node types and 4 relationship types, enabling queries like "How does Trump discuss Bitcoin?" or "Show all entities with positive sentiment in Technology topics."
 
 **Node Types:**
 - **Speaker**: Influential figures with `name_id`, `display_name`, `role`, `organization`, `industry`, `region`
 - **Communication**: Speeches, interviews, debates with `title`, `content_type`, `content_date`, `source_url`, `full_text`, `word_count`, `was_summarized`, `compression_ratio`
 - **Entity**: Canonical entities (`canonical_name`, `entity_type`) mentioned across communications - types include organization, location, person, program, product, event, other
-- **Mention**: Entity references within a specific topic context (`topic`, `context`, `aggregated_sentiment`) - topics include economics, technology, foreign_affairs, healthcare, energy, defense, social, regulation, other
-- **Subject**: Specific aspects discussed about an entity (`subject_name`, `sentiment`, `quotes[]`) with sentiment values: positive, negative, neutral, unclear
+- **Topic**: Entity references within a specific topic context (`topic`, `context`, `aggregated_sentiment`) - topics include economics, trade, immigration, elections, technology, foreign_affairs, healthcare, energy, defense, social, regulation, legal, media, personnel, other
+- **Claim**: Specific claims made about an entity (`subject_name`, `sentiment`, `quotes[]`) with sentiment values: positive, negative, neutral, unclear
 
 All nodes include a `name` property for zero-config visualization in Neo4j Browser and Bloom.
 
@@ -338,26 +338,26 @@ graph TB
         C["<b>Communication</b><br/>────────────────────<br/>name (title)<br/>id<br/>content_type<br/>content_date<br/>source_url<br/>full_text<br/>word_count<br/>was_summarized"]
     end
     
-    subgraph "Level 2: Entity & Mentions"
+    subgraph "Level 2: Entity & Topics"
         E["<b>Entity</b><br/>────────────────────<br/>name (canonical_name)<br/>entity_type"]
-        M1["<b>Mention</b><br/>────────────────────<br/>name (topic)<br/>context<br/>aggregated_sentiment"]
-        M2["<b>Mention</b><br/>────────────────────<br/>name (topic)<br/>context<br/>aggregated_sentiment"]
+        M1["<b>Topic</b><br/>────────────────────<br/>name (topic)<br/>context<br/>aggregated_sentiment"]
+        M2["<b>Topic</b><br/>────────────────────<br/>name (topic)<br/>context<br/>aggregated_sentiment"]
     end
     
-    subgraph "Level 3: Subjects"
-        SU1["<b>Subject</b><br/>────────────────────<br/>name (subject_name)<br/>sentiment<br/>quotes[]"]
-        SU2["<b>Subject</b><br/>────────────────────<br/>name (subject_name)<br/>sentiment<br/>quotes[]"]
-        SU3["<b>Subject</b><br/>────────────────────<br/>name (subject_name)<br/>sentiment<br/>quotes[]"]
+    subgraph "Level 3: Claims"
+        SU1["<b>Claim</b><br/>────────────────────<br/>name (subject_name)<br/>sentiment<br/>quotes[]"]
+        SU2["<b>Claim</b><br/>────────────────────<br/>name (subject_name)<br/>sentiment<br/>quotes[]"]
+        SU3["<b>Claim</b><br/>────────────────────<br/>name (subject_name)<br/>sentiment<br/>quotes[]"]
     end
     
     S -->|DELIVERED| C
-    C -->|HAS_MENTION| M1
-    C -->|HAS_MENTION| M2
+    C -->|HAS_TOPIC| M1
+    C -->|HAS_TOPIC| M2
     M1 -->|REFERS_TO| E
     M2 -->|REFERS_TO| E
-    M1 -->|HAS_SUBJECT| SU1
-    M1 -->|HAS_SUBJECT| SU2
-    M2 -->|HAS_SUBJECT| SU3
+    M1 -->|HAS_CLAIM| SU1
+    M1 -->|HAS_CLAIM| SU2
+    M2 -->|HAS_CLAIM| SU3
     
     style S fill:#2C3E50,color:#fff
     style C fill:#27AE60,color:#fff
@@ -372,13 +372,13 @@ graph TB
 **Relationship Types:**
 
 - `DELIVERED`: Speaker → Communication (who delivered the communication)
-- `HAS_MENTION`: Communication → Mention (what entities were discussed in what topics)
-- `REFERS_TO`: Mention → Entity (which entity is mentioned)
-- `HAS_SUBJECT`: Mention → Subject (specific subjects discussed about the entity)
+- `HAS_TOPIC`: Communication → Topic (what entities were discussed in what topics)
+- `REFERS_TO`: Topic → Entity (which entity is referenced)
+- `HAS_CLAIM`: Topic → Claim (specific claims made about the entity)
 
 **Aggregated Sentiment:**
 
-The `Grapher` computes aggregated sentiment for each Mention during preprocessing by analyzing sentiment across all its Subjects:
+The `Grapher` computes aggregated sentiment for each Topic during preprocessing by analyzing sentiment across all its Claims:
 
 ```json
 {
@@ -388,7 +388,7 @@ The `Grapher` computes aggregated sentiment for each Mention during preprocessin
 }
 ```
 
-Proportions are rounded to 3 decimal places (configurable via `graph_config.DECIMAL_PRECISION`). This enables topic-level sentiment queries without traversing to individual subjects.
+Proportions are rounded to 3 decimal places (configurable via `graph_config.DECIMAL_PRECISION`). This enables topic-level sentiment queries without traversing to individual claims.
 
 ---
 
@@ -411,7 +411,7 @@ data/
     │       └── {id}.json              # Summaries with compression metrics
     ├── categorize/
     │   └── {content_type}/
-    │       └── {id}.json              # EntityMention[] with hierarchical structure
+    │       └── {id}.json              # EntityMention[] with Topic/Claim hierarchical structure
     └── graph/
         └── {content_type}/
             └── {id}.json              # Graph loading results
@@ -422,7 +422,7 @@ data/
 1. **Discover Stage**: Creates initial pipeline state entries and discover output files
 2. **Scrape Stage**: Reads discover output via DataLoader, extracts transcripts, saves `ScrapingData` with scrape text, word_count, title, content_date, content_type
 3. **Summarize Stage**: Reads scrape output, conditionally summarizes, saves summarize output with compression metrics
-4. **Categorize Stage**: Reads summarize output, extracts hierarchical entities via LLM (`EntityMention` → `TopicMention` → `Subject`), saves categorize output
+4. **Categorize Stage**: Reads summarize output, extracts hierarchical entities via LLM (`EntityMention` → `Topic` → `Claim`), saves categorize output
 5. **Graph Stage**: Reads all previous outputs, stitches communication metadata, preprocesses entities (computes aggregated sentiment), validates structure, and loads to Neo4j via Grapher
 
 Each stage returns `StageResult` with separated `artifact` (persisted data) and `metadata` (state updates), advancing `next_stage` on success.

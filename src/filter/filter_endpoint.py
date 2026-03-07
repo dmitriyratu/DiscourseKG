@@ -35,14 +35,10 @@ class FilterEndpoint(BaseEndpoint):
             f"matched={filter_result.data.matched_speakers}"
         )
 
-        state_update = stage_result.metadata or {}
-        if filter_result.data.matched_speakers:
-            state_update["matched_speakers"] = filter_result.data.matched_speakers
-
         status = PipelineStageStatus.COMPLETED if filter_result.data.is_relevant else PipelineStageStatus.FILTERED
         return self._create_success_response(
             result=stage_result.artifact,
             stage=PipelineStages.FILTER.value,
-            state_update=state_update,
+            state_update=stage_result.metadata,
             pipeline_status=status,
         )

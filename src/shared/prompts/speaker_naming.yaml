@@ -1,0 +1,3 @@
+# Canonical naming — entities and speakers (injected into filter, extract, categorize)
+canonical_naming_rule: |
+  Use canonical names. People: Smith → John Smith; Doe / Mr. Doe / President Doe → Jane Doe. Companies: Apple Inc. → Apple. For speaker markers: Host → use as-is if unnamed.

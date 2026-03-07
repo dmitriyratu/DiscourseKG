@@ -10,12 +10,13 @@ from peewee import SqliteDatabase, Model, CharField, IntegerField, FloatField, T
 from src.config import config
 from src.utils.logging_utils import get_logger
 from src.shared.pipeline_definitions import (
+    ArticleFields,
+    EndpointResponse,
     PipelineConfig,
     PipelineStages,
     PipelineStageStatus,
     PipelineState,
     StageMetadata,
-    EndpointResponse,
 )
 from src.shared.models import StageOperationResult
 from src.discover.models import DiscoveredArticle
@@ -93,31 +94,19 @@ class PipelineStateManager:
             status=PipelineStageStatus.COMPLETED,
             result_data=result_data,
             file_path=file_path,
-            article_fields={
-                "title": discovered.title,
-                "publication_date": discovered.publication_date,
-                "source_url": discovered.url,
-                "search_url": discovered.search_url,
-                "run_timestamp": run_timestamp,
-                "created_at": now,
-            },
+            article_fields=ArticleFields(
+                title=discovered.title,
+                publication_date=discovered.publication_date,
+                source_url=discovered.url,
+                search_url=discovered.search_url,
+                run_timestamp=run_timestamp,
+                created_at=now,
+            ),
         )
-
-    @staticmethod
-    def article_fields_from_state(state: PipelineState) -> dict[str, str | None]:
-        """Extract article fields dict from PipelineState for denormalization."""
-        return {
-            "title": state.title,
-            "publication_date": state.publication_date,
-            "source_url": state.source_url,
-            "search_url": state.search_url,
-            "run_timestamp": state.run_timestamp,
-            "created_at": state.created_at,
-        }
 
     def record_stage_result(self, status: PipelineStageStatus, result_data: EndpointResponse,
                             file_path: str | None = None,
-                            article_fields: dict[str, str] | None = None) -> None:
+                            article_fields: ArticleFields | None = None) -> None:
         """Create or update a stage row from endpoint result data."""
         stage = result_data.stage
         output = StageOperationResult.model_validate(result_data.output)
@@ -212,16 +201,16 @@ class PipelineStateManager:
         )
 
     @staticmethod
-    def _article_fields_from_row(row: PipelineStage) -> dict[str, str | None]:
+    def _article_fields_from_row(row: PipelineStage) -> ArticleFields:
         """Extract article-level fields from a stage row (denormalized on all rows)."""
-        return {
-            "publication_date": row.publication_date,
-            "title": row.title,
-            "source_url": row.source_url,
-            "search_url": row.search_url,
-            "run_timestamp": row.run_timestamp or "",
-            "created_at": row.created_at or "",
-        }
+        return ArticleFields(
+            title=row.title,
+            publication_date=row.publication_date,
+            source_url=row.source_url,
+            search_url=row.search_url,
+            run_timestamp=row.run_timestamp,
+            created_at=row.created_at,
+        )
 
     def _build_state(self, article_id: str) -> PipelineState | None:
         """Reconstruct a PipelineState from stage rows."""
@@ -252,17 +241,16 @@ class PipelineStateManager:
         total_processing = sum(r.processing_time_secs or 0 for r in rows_by_stage.values())
         total_retries = sum(r.retry_count for r in rows_by_stage.values())
         is_filtered = any(r.status == PipelineStageStatus.FILTERED.value for r in rows_by_stage.values())
-        next_stage = None if is_filtered else PipelineConfig.get_next_stage(latest_completed) if latest_completed else None
-
-        filter_row = rows_by_stage.get(PipelineStages.FILTER.value)
-        filter_meta = json.loads(filter_row.metadata or "{}") if filter_row else {}
-        matched_speakers = filter_meta.get("matched_speakers", {})
+        next_stage = PipelineConfig.get_next_stage(latest_completed, is_filtered=is_filtered)
 
         article_row = discover or next(iter(rows_by_stage.values()))
+        af = self._article_fields_from_row(article_row)
+        af_dict = af.model_dump()
+        af_dict["run_timestamp"] = af_dict.get("run_timestamp") or ""
+        af_dict["created_at"] = af_dict.get("created_at") or ""
         return PipelineState(
             id=article_id,
-            matched_speakers=matched_speakers,
-            **self._article_fields_from_row(article_row),
+            **af_dict,
             latest_completed_stage=latest_completed,
             next_stage=next_stage,
             error_message=error_message,

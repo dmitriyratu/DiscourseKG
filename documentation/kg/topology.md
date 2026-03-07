@@ -21,35 +21,35 @@ graph TB
         C[Communication<br/>___________<br/>id<br/>title<br/>content_type<br/>content_date<br/>source_url<br/>full_text<br/>word_count<br/>was_summarized<br/>compression_ratio]
     end
     
-    subgraph "Level 2: Entity & Mentions"
+    subgraph "Level 2: Entity & Topics"
         E[Entity<br/>___________<br/>canonical_name<br/>entity_type]
-        M1[Mention<br/>___________<br/>topic<br/>context<br/>subjects]
-        M2[Mention<br/>___________<br/>topic<br/>context<br/>subjects]
+        T1[Topic<br/>___________<br/>topic<br/>context<br/>claims]
+        T2[Topic<br/>___________<br/>topic<br/>context<br/>claims]
     end
     
-    subgraph "Level 3: Subjects"
-        SU1[Subject<br/>___________<br/>subject_name<br/>sentiment<br/>quotes]
-        SU2[Subject<br/>___________<br/>subject_name<br/>sentiment<br/>quotes]
-        SU3[Subject<br/>___________<br/>subject_name<br/>sentiment<br/>quotes]
+    subgraph "Level 3: Claims"
+        CL1[Claim<br/>___________<br/>subject_name<br/>sentiment<br/>quotes]
+        CL2[Claim<br/>___________<br/>subject_name<br/>sentiment<br/>quotes]
+        CL3[Claim<br/>___________<br/>subject_name<br/>sentiment<br/>quotes]
     end
     
     S -->|DELIVERED| C
-    C -->|HAS_MENTION| M1
-    C -->|HAS_MENTION| M2
-    M1 -->|REFERS_TO| E
-    M2 -->|REFERS_TO| E
-    M1 -->|HAS_SUBJECT| SU1
-    M1 -->|HAS_SUBJECT| SU2
-    M2 -->|HAS_SUBJECT| SU3
+    C -->|HAS_TOPIC| T1
+    C -->|HAS_TOPIC| T2
+    T1 -->|REFERS_TO| E
+    T2 -->|REFERS_TO| E
+    T1 -->|HAS_CLAIM| CL1
+    T1 -->|HAS_CLAIM| CL2
+    T2 -->|HAS_CLAIM| CL3
     
     style S fill:#4A90E2,color:#fff
     style C fill:#7ED321,color:#000
     style E fill:#F5A623,color:#000
-    style M1 fill:#50E3C2,color:#000
-    style M2 fill:#50E3C2,color:#000
-    style SU1 fill:#9B59B6,color:#fff
-    style SU2 fill:#9B59B6,color:#fff
-    style SU3 fill:#9B59B6,color:#fff
+    style T1 fill:#50E3C2,color:#000
+    style T2 fill:#50E3C2,color:#000
+    style CL1 fill:#9B59B6,color:#fff
+    style CL2 fill:#9B59B6,color:#fff
+    style CL3 fill:#9B59B6,color:#fff
 ```
 
 ---
@@ -109,39 +109,39 @@ graph TB
   - `other`: Anything else
 
 **Cardinality**: One per unique entity across all communications
-**Reusability**: Same entity node referenced by multiple mentions
+**Reusability**: Same entity node referenced by multiple topics
 
 ---
 
-### 4. Mention
-**Represents**: A discussion of an entity within a specific topic in a communication
+### 4. Topic
+**Represents**: A discussion of an entity within a specific topic category in a communication
 
 **Properties**:
 - `topic` (enum): Topic category where entity was discussed
   - `economics`, `technology`, `foreign_affairs`, `healthcare`, `energy`, `defense`, `social`, `regulation`
 - `context` (string): 10-500 char summary of how entity was discussed in this topic
-- `subjects` (array): List of specific subjects discussed in this mention
+- `claims` (array): List of specific claims made in this topic discussion
 
 **Cardinality**: One per unique (communication, entity, topic) combination
-**Constraint**: An entity can only be mentioned once per topic per communication
+**Constraint**: An entity can only appear once per topic per communication
 
-**Note**: `aggregated_sentiment` is computed in-memory during the graph loading stage from the `subjects` array before inserting into Neo4j
+**Note**: `aggregated_sentiment` is computed in-memory during the graph loading stage from the `claims` array before inserting into Neo4j
 
 ---
 
-### 5. Subject
-**Represents**: A specific 2-3 word subject discussed about an entity
+### 5. Claim
+**Represents**: A specific 1-3 word claim made about an entity within a topic
 
 **Properties**:
-- `subject_name` (string): 2-3 word description (e.g., "Coal Plants", "Trade Policy", "Job Creation")
-- `sentiment` (enum): Speaker's feeling toward this subject
+- `subject_name` (string): 1-3 word description (e.g., "Coal Plants", "Trade Policy", "Job Creation")
+- `sentiment` (enum): Speaker's feeling toward this claim
   - `positive`: Supportive, favorable
   - `negative`: Critical, opposing
   - `neutral`: Factual, no emotion
   - `unclear`: Cannot determine
-- `quotes` (array of strings): 1-6 verbatim excerpts from full_text about this subject
+- `quotes` (array of strings): 1-10 verbatim excerpts from full_text about this claim
 
-**Cardinality**: One per distinct subject within a mention
+**Cardinality**: One per distinct claim within a topic
 **Granularity**: Enables fine-grained sentiment analysis (e.g., positive on "Regulatory Approval" but negative on "Security Concerns" for same entity)
 
 

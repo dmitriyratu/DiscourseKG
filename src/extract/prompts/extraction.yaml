@@ -1,0 +1,78 @@
+version: "2.0"
+
+# Phase 1: Entity extraction — canonical entity names from full content
+entity_system_prompt: |
+  You identify every significant entity discussed in spoken communications ({content_types}) for a knowledge graph.
+
+  ---
+  RULES:
+  1. Identify every significant, non-redundant entity discussed in the content
+  2. {canonical_naming_rule}
+  3. Collapse all name variants into ONE canonical form per entity — e.g. "Smith", "President Smith", "Mr. Smith" → "John Smith" (return each entity only once)
+  4. Cover the ENTIRE content — do not stop early or favor the beginning
+  5. Return ONLY entity names — no passages, no descriptions
+
+  ---
+  OUTPUT FORMAT:
+  {{
+    "entities": ["Entity A", "Entity B", ...]
+  }}
+
+entity_user_prompt: |
+  Identify all significant entities discussed in the following content.
+
+  ---
+  CONTENT:
+  {content}
+
+  ---
+  Return a flat list of canonical entity names. Each entity must appear exactly once.
+
+# Phase 2: Passage extraction — verbatim passages for known entities in a chunk
+passage_system_prompt: |
+  You extract verbatim passages from spoken communications ({content_types}) for a knowledge graph.
+  You are given a STRICT list of known entities and a chunk of content.
+
+  ---
+  SPEAKER MARKERS:
+  A speaker marker is the canonical name in brackets, e.g. [Speaker A]. Mark every speaker in a passage with a speaker marker.
+  {canonical_naming_rule}
+
+  ---
+  CRITICAL RULES:
+  1. STRICT WHITELIST: You must ONLY extract passages for entities explicitly provided in the KNOWN ENTITIES list.
+  2. IGNORE NEW ENTITIES: If the speakers discuss a person, place, or concept that is NOT on the KNOWN ENTITIES list, you must completely ignore it. Do not add new entities.
+  3. IGNORE ACTIVE SPEAKERS AS ENTITIES: Do not extract passages where the entity is just the person actively speaking. Entities are what the speakers are *talking about*.
+  4. Use the exact entity names provided — do not rename, re-canonicalize, or fix typos.
+  5. A passage captures the full topically continuous exchange — brief interjections ("Yeah.", "Right.") do not break a passage.
+  6. Passages should be verbatim text from the content with speaker markers injected — do not paraphrase.
+  7. Start a new passage only when the conversation genuinely shifts to a new subject or the entity reappears later.
+
+  ---
+  OUTPUT FORMAT:
+  {{
+    "entities": [
+      {{
+        "entity_name": "exact name copied directly from KNOWN ENTITIES list",
+        "passages": [
+          "[Speaker A] question or context\n[Speaker B] response about entity...",
+          "[Speaker B] later mention of entity in different context..."
+        ]
+      }}
+    ]
+  }}
+
+passage_user_prompt: |
+  Extract passages for the following entities from the content chunk below.
+  If none of these specific entities are discussed, return an empty list.
+
+  ---
+  KNOWN ENTITIES (STRICT WHITELIST - DO NOT DEVIATE):
+  {entity_list}
+
+  ---
+  CONTENT CHUNK:
+  {content}
+
+  ---
+  Return entities and passages for ONLY those entities discussed in this chunk that match the KNOWN ENTITIES list exactly.

@@ -4,6 +4,7 @@ import json
 from typing import Any, Dict, List
 
 from src.graph.config import graph_config
+from src.graph.models import AssembledGraphData, GraphData
 from src.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -15,9 +16,9 @@ class Neo4jLoader:
     def __init__(self, driver: Any) -> None:
         self.driver = driver
 
-    def load(self, data: Dict[str, Any]) -> Dict[str, int]:
+    def load(self, data: AssembledGraphData) -> GraphData:
         """Load data into Neo4j and return statistics."""
-        id = data["id"]
+        id = data.id
 
         try:
             logger.debug(f"Starting Neo4j load for {id}")
@@ -32,34 +33,34 @@ class Neo4jLoader:
             logger.error(f"Neo4j load failed for {id}: {e}")
             raise
 
-    def _load_data(self, session: Any, data: Dict[str, Any]) -> Dict[str, int]:
+    def _load_data(self, session: Any, data: AssembledGraphData) -> GraphData:
         """Load all data into Neo4j and return statistics."""
-        stats = self._create_stats()
+        stats = GraphData()
 
         self._create_constraints(session)
 
-        # Load speaker nodes and DELIVERED relationships for each matched speaker
-        for speaker in data["speakers"]:
-            speaker_stats = self._load_speaker_node(session, speaker)
-            stats["nodes_created"] += speaker_stats["nodes_created"]
+        comm_dict = data.communication.model_dump()
+        for speaker in data.speakers:
+            speaker_stats = self._load_speaker_node(session, speaker.model_dump())
+            stats.nodes_created += speaker_stats.nodes_created
 
             comm_stats = self._load_communication_node(
-                session, data["communication"], speaker["name_id"]
+                session, comm_dict, speaker.name_id
             )
-            stats["nodes_created"] += comm_stats["nodes_created"]
-            stats["relationships_created"] += comm_stats["relationships_created"]
+            stats.nodes_created += comm_stats.nodes_created
+            stats.relationships_created += comm_stats.relationships_created
 
-        entity_stats = self._load_entities_and_mentions(
-            session, data["id"], data["entities"]
+        entity_stats = self._load_entities_and_topics(
+            session, data.id, data.entities
         )
-        stats["nodes_created"] += entity_stats["nodes_created"]
-        stats["relationships_created"] += entity_stats["relationships_created"]
+        stats.nodes_created += entity_stats.nodes_created
+        stats.relationships_created += entity_stats.relationships_created
 
         return stats
 
-    def _create_stats(self, nodes: int = 0, relationships: int = 0) -> Dict[str, int]:
-        """Create stats dict for tracking Neo4j operations."""
-        return {"nodes_created": nodes, "relationships_created": relationships}
+    def _create_stats(self, nodes: int = 0, relationships: int = 0) -> GraphData:
+        """Create stats for tracking Neo4j operations."""
+        return GraphData(nodes_created=nodes, relationships_created=relationships)
 
     def _create_constraints(self, session: Any) -> None:
         """Create Neo4j constraints (idempotent)."""
@@ -74,7 +75,7 @@ class Neo4jLoader:
             except Exception as e:
                 logger.debug(f"Constraint already exists or error: {e}")
 
-    def _load_speaker_node(self, session: Any, speaker: Dict[str, Any]) -> Dict[str, int]:
+    def _load_speaker_node(self, session: Any, speaker: Dict[str, Any]) -> GraphData:
         """Load Speaker node."""
         query = """
         MERGE (s:Speaker {name_id: $name_id})
@@ -91,7 +92,7 @@ class Neo4jLoader:
 
     def _load_communication_node(
         self, session: Any, communication: Dict[str, Any], speaker_name_id: str
-    ) -> Dict[str, int]:
+    ) -> GraphData:
         """Load Communication node and DELIVERED relationship."""
         query = """
         MATCH (s:Speaker {name_id: $speaker_name_id})
@@ -113,27 +114,27 @@ class Neo4jLoader:
         record = result.single()
         return self._create_stats(nodes=1 if record else 0, relationships=1 if record else 0)
 
-    def _load_entities_and_mentions(
+    def _load_entities_and_topics(
         self, session: Any, comm_id: str, entities: List[Dict[str, Any]]
-    ) -> Dict[str, int]:
-        """Load Entities, Mentions, Subjects and their relationships."""
+    ) -> GraphData:
+        """Load Entities, Topics, Claims and their relationships."""
         nodes_created = 0
         relationships_created = 0
 
         for entity in entities:
             entity_stats = self._load_entity_node(session, entity)
-            nodes_created += entity_stats["nodes_created"]
+            nodes_created += entity_stats.nodes_created
 
-            for mention in entity.get("mentions", []):
-                mention_stats = self._load_mention_and_subjects(
-                    session, comm_id, entity["entity_name"], mention
+            for topic in entity.get("topics", []):
+                topic_stats = self._load_topic_and_claims(
+                    session, comm_id, entity["entity_name"], topic
                 )
-                nodes_created += mention_stats["nodes_created"]
-                relationships_created += mention_stats["relationships_created"]
+                nodes_created += topic_stats.nodes_created
+                relationships_created += topic_stats.relationships_created
 
         return self._create_stats(nodes=nodes_created, relationships=relationships_created)
 
-    def _load_entity_node(self, session: Any, entity: Dict[str, Any]) -> Dict[str, int]:
+    def _load_entity_node(self, session: Any, entity: Dict[str, Any]) -> GraphData:
         """Load Entity node."""
         query = """
         MERGE (e:Entity {canonical_name: $entity_name})
@@ -148,34 +149,34 @@ class Neo4jLoader:
         )
         return self._create_stats(nodes=1 if result.single() else 0)
 
-    def _load_mention_and_subjects(
+    def _load_topic_and_claims(
         self,
         session: Any,
         comm_id: str,
         entity_name: str,
         mention: Dict[str, Any],
-    ) -> Dict[str, int]:
-        """Load Mention node with Subjects and create relationships."""
+    ) -> GraphData:
+        """Load Topic node with Claims and create relationships."""
         
         topic = mention.get("topic", "")
 
         speaker = mention.get("speaker", "")
-        mention_query = """
+        topic_query = """
         MATCH (c:Communication {id: $comm_id})
         MATCH (e:Entity {canonical_name: $entity_name})
-        CREATE (m:Mention {
+        CREATE (t:Topic {
             name: $topic,
             topic: $topic,
             speaker: $speaker,
             context: $context,
             aggregated_sentiment: $aggregated_sentiment
         })
-        CREATE (c)-[:HAS_MENTION]->(m)
-        CREATE (m)-[:REFERS_TO]->(e)
-        RETURN m
+        CREATE (c)-[:HAS_TOPIC]->(t)
+        CREATE (t)-[:REFERS_TO]->(e)
+        RETURN t
         """
         result = session.run(
-            mention_query,
+            topic_query,
             comm_id=comm_id,
             entity_name=entity_name,
             topic=topic,
@@ -183,42 +184,42 @@ class Neo4jLoader:
             context=mention["context"],
             aggregated_sentiment=json.dumps(mention["aggregated_sentiment"]),
         )
-        mention_node = result.single()
-        if not mention_node:
+        topic_node = result.single()
+        if not topic_node:
             return self._create_stats()
 
         nodes_created = 1
         relationships_created = 2
 
-        for subject in mention.get("subjects", []):
-            subject_stats = self._load_subject_node(
-                session, mention_node["m"].element_id, subject
+        for claim in mention.get("claims", []):
+            claim_stats = self._load_claim_node(
+                session, topic_node["t"].element_id, claim
             )
-            nodes_created += subject_stats["nodes_created"]
-            relationships_created += subject_stats["relationships_created"]
+            nodes_created += claim_stats.nodes_created
+            relationships_created += claim_stats.relationships_created
 
         return self._create_stats(nodes=nodes_created, relationships=relationships_created)
 
-    def _load_subject_node(
-        self, session: Any, mention_id: str, subject: Dict[str, Any]
-    ) -> Dict[str, int]:
-        """Load Subject node and HAS_SUBJECT relationship."""
+    def _load_claim_node(
+        self, session: Any, topic_id: str, claim: Dict[str, Any]
+    ) -> GraphData:
+        """Load Claim node and HAS_CLAIM relationship."""
         query = """
-        MATCH (m:Mention) WHERE elementId(m) = $mention_id
-        CREATE (s:Subject {
+        MATCH (t:Topic) WHERE elementId(t) = $topic_id
+        CREATE (cl:Claim {
             name: $subject_name,
             subject_name: $subject_name,
             sentiment: $sentiment,
             quotes: $quotes
         })
-        CREATE (m)-[:HAS_SUBJECT]->(s)
-        RETURN s
+        CREATE (t)-[:HAS_CLAIM]->(cl)
+        RETURN cl
         """
         result = session.run(
             query,
-            mention_id=mention_id,
-            subject_name=subject["subject_name"],
-            sentiment=subject["sentiment"],
-            quotes=subject["quotes"],
+            topic_id=topic_id,
+            subject_name=claim["subject_name"],
+            sentiment=claim["sentiment"],
+            quotes=claim["quotes"],
         )
         return self._create_stats(nodes=1 if result.single() else 0, relationships=1)

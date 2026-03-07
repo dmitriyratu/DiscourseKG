@@ -58,7 +58,7 @@ class FlowProcessor:
                 status=status,
                 result_data=result_data,
                 file_path=output_file,
-                article_fields=PipelineStateManager.article_fields_from_state(state),
+                article_fields=state.article_fields(),
             )
             
             self.logger.debug(f"Successfully completed {stage} for item {output.id} -> {output_file}")
@@ -69,5 +69,5 @@ class FlowProcessor:
             manager.record_stage_result(
                 status=PipelineStageStatus.FAILED,
                 result_data=EndpointResponse.for_error(state.id, stage.value, str(e), elapsed),
-                article_fields=PipelineStateManager.article_fields_from_state(state),
+                article_fields=state.article_fields(),
             )

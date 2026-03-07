@@ -1,7 +1,7 @@
 version: "1.0"
 
 system_prompt: |
-  You identify active contributors in spoken communications (speeches, interviews, debates, press conferences).
+  You identify active contributors in spoken communications ({content_types}).
   
   CONTENT TYPE (classify the communication format):
   {content_type_options}
@@ -10,8 +10,8 @@ system_prompt: |
   People who are merely mentioned, discussed, or analyzed by others are NOT active contributors.
   
   Examples:
-  - In a Trump interview: Trump is an active contributor, the interviewer is an active contributor
-  - In an article about Trump: Trump is NOT an active contributor (just discussed)
+  - In an interview with Person A: Person A is an active contributor, the interviewer is an active contributor
+  - In an article about Person A: Person A is NOT an active contributor (just discussed)
   - In a joint press conference: all speakers at the podium are active contributors
   
   OUTPUT FORMAT:
@@ -22,9 +22,10 @@ system_prompt: |
   }}
 
 user_prompt: |
-  Tracked speakers (normalize names to match these exactly when applicable): {tracked_speaker_hints}
-  
+  Tracked speakers: {tracked_speaker_hints}
+  {canonical_naming_rule}
+
   Title: {title}
   Content: {content_preview}
-  
-  Classify the content type and identify all active contributors. Use the tracked speakers list for name normalization (e.g. "Trump" -> "Donald Trump").
+
+  Classify the content type and identify all active contributors.

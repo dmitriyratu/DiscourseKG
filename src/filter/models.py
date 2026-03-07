@@ -39,6 +39,7 @@ class FilterStageMetadata(BaseModel):
     model_used: str = Field(..., description="LLM model used for filtering")
     input_tokens: int = Field(default=0, description="Input tokens used")
     output_tokens: int = Field(default=0, description="Output tokens used")
+    active_speakers: List[str] = Field(default_factory=list, description="Active speakers (for downstream exclusion)")
     matched_speakers: Dict[str, str] = Field(default_factory=dict, description="Matched speakers: id -> display_name")
 
 
