@@ -5,7 +5,7 @@ from src.filter.pipeline import filter_content
 from src.shared.base_endpoint import BaseEndpoint
 from src.shared.data_loaders import DataLoader
 from src.shared.pipeline_definitions import EndpointResponse, PipelineStageStatus, PipelineStages, PipelineState
-from src.speakers.registry import get_display_name_to_id
+from src.speakers.registry import get_tracked_display_names
 
 
 class FilterEndpoint(BaseEndpoint):
@@ -18,13 +18,12 @@ class FilterEndpoint(BaseEndpoint):
         """Execute the filter process for a single item."""
         content = DataLoader.load_content_input(state, PipelineStages.SCRAPE)
 
-        display_name_to_id = get_display_name_to_id()
+        tracked_speaker_hints = get_tracked_display_names()
         context = FilterContext(
             id=state.id,
             title=state.title,
             content=content,
-            tracked_speaker_hints=list(display_name_to_id.keys()),
-            display_name_to_id=display_name_to_id,
+            tracked_speaker_hints=tracked_speaker_hints,
         )
 
         stage_result = filter_content(context)
@@ -36,9 +35,4 @@ class FilterEndpoint(BaseEndpoint):
         )
 
         status = PipelineStageStatus.COMPLETED if filter_result.data.is_relevant else PipelineStageStatus.FILTERED
-        return self._create_success_response(
-            result=stage_result.artifact,
-            stage=PipelineStages.FILTER.value,
-            state_update=stage_result.metadata,
-            pipeline_status=status,
-        )
+        return self._success(stage_result, PipelineStages.FILTER, pipeline_status=status)

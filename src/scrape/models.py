@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field
 from typing import Optional
-from src.shared.models import StageOperationResult
+from src.shared.pipeline_definitions import StageOperationResult
 
 
 class ScrapeStageMetadata(BaseModel):

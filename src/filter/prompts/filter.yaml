@@ -23,7 +23,7 @@ system_prompt: |
 
 user_prompt: |
   Tracked speakers: {tracked_speaker_hints}
-  {canonical_naming_rule}
+  Use canonical names: People (Smith → John Smith; Doe / Mr. Doe → Jane Doe). Companies (Apple Inc. → Apple). Unnamed speakers: use as-is (e.g. Host).
 
   Title: {title}
   Content: {content_preview}

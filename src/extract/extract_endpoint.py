@@ -4,7 +4,7 @@ from src.shared.base_endpoint import BaseEndpoint
 from src.shared.pipeline_definitions import EndpointResponse, PipelineStages, PipelineState
 from src.shared.data_loaders import DataLoader
 from src.extract.pipeline import extract_entities
-from src.extract.models import ExtractContext, ExtractionResult
+from src.extract.models import ExtractContext
 
 
 class ExtractEndpoint(BaseEndpoint):
@@ -20,21 +20,11 @@ class ExtractEndpoint(BaseEndpoint):
         processing_context = ExtractContext(
             id=state.id,
             content=content,
-            active_speakers=state.active_speakers,
+            content_type=state.content_type,
+            matched_speakers=state.matched_speakers,
             previous_error=state.error_message,
             previous_failed_output=state.previous_failed_output,
         )
 
         stage_result = extract_entities(processing_context)
-
-        extraction_result = ExtractionResult.model_validate(stage_result.artifact)
-
-        self.logger.debug(
-            f"Extracted {len(extraction_result.data.entities)} entities for {state.id}"
-        )
-
-        return self._create_success_response(
-            result=stage_result.artifact,
-            stage=PipelineStages.EXTRACT.value,
-            state_update=stage_result.metadata,
-        )
+        return self._success(stage_result, PipelineStages.EXTRACT)

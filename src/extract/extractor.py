@@ -1,9 +1,9 @@
-"""Two-phase extractor: entity extraction then parallel passage extraction."""
+"""Two-phase extractor: speaker-entity attribution then parallel passage extraction."""
 
 from collections import defaultdict
 from difflib import SequenceMatcher
 from enum import Enum
-from typing import List, Set
+from typing import Dict, List, Optional
 
 from langchain.chat_models import init_chat_model
 from langchain_core.callbacks import get_usage_metadata_callback
@@ -13,15 +13,14 @@ from pydantic import Field, create_model
 
 from src.extract.config import extraction_config
 from src.extract.models import (
-    EntityListOutput, ExtractionOutput, ExtractionResult,
-    ExtractContext, ExtractedEntity, ExtractStageMetadata,
+    ExtractionOutput, ExtractionResult, ExtractContext,
+    ExtractStageMetadata, Passage, SpeakerEntityMap,
 )
 from src.extract.prompts import (
     ENTITY_SYSTEM_PROMPT, ENTITY_USER_PROMPT,
     PASSAGE_SYSTEM_PROMPT, PASSAGE_USER_PROMPT,
 )
-from src.shared.prompts import CANONICAL_NAMING_RULE
-from src.shared.models import ContentType, TokenUsage
+from src.shared.models import TokenUsage
 from src.shared.pipeline_definitions import StageResult
 from src.utils.logging_utils import get_logger
 
@@ -42,7 +41,6 @@ class Extractor:
             max_retries=extraction_config.LLM_MAX_RETRIES,
             api_key=extraction_config.LLM_API_KEY,
         )
-        content_types_str = ", ".join(ct.value for ct in ContentType)
 
         entity_prompt = ChatPromptTemplate.from_messages([
             ("system", ENTITY_SYSTEM_PROMPT),
@@ -50,25 +48,19 @@ class Extractor:
         ])
         self.entity_chain = (
             {
-                "content_types": lambda _: content_types_str,
-                "canonical_naming_rule": lambda _: CANONICAL_NAMING_RULE,
+                "content_type": lambda x: x["content_type"],
+                "matched_speakers": lambda x: x["matched_speakers"],
                 "content": lambda x: x["content"],
+                "previous_error_text": lambda x: x.get("previous_error_text", ""),
             }
             | entity_prompt
-            | self.llm.with_structured_output(EntityListOutput, include_raw=True)
+            | self.llm.with_structured_output(SpeakerEntityMap)
         )
 
         self.passage_prompt = ChatPromptTemplate.from_messages([
             ("system", PASSAGE_SYSTEM_PROMPT),
             ("user", PASSAGE_USER_PROMPT),
         ])
-        self._passage_input_map = {
-            "content_types": lambda _: content_types_str,
-            "canonical_naming_rule": lambda _: CANONICAL_NAMING_RULE,
-            "entity_list": lambda x: x["entity_list"],
-            "content": lambda x: x["content"],
-        }
-
         self.splitter = RecursiveCharacterTextSplitter(
             chunk_size=extraction_config.CHUNK_SIZE,
             chunk_overlap=extraction_config.CHUNK_OVERLAP,
@@ -76,149 +68,189 @@ class Extractor:
         )
 
     @staticmethod
-    def _passage_schema(entity_list: EntityListOutput) -> type | None:
-        """Pydantic model for Phase 2; entity_name constrained to Phase 1 whitelist."""
-        valid_names = list(dict.fromkeys(e.strip() for e in entity_list.entities if e.strip()))
-        if not valid_names:
+    def _passage_schema(entity_whitelist: Dict[str, List[str]]) -> type | None:
+        """Dynamic Pydantic schema for Phase 2: speaker enum + unified entity enum → passages."""
+        all_speakers = list(entity_whitelist.keys())
+        all_entities = list(dict.fromkeys(
+            e.strip()
+            for entities in entity_whitelist.values()
+            for e in entities
+            if e.strip()
+        ))
+        if not all_speakers or not all_entities:
             return None
-        entity_enum = Enum("EntityNameEnum", [(f"e_{i}", n) for i, n in enumerate(valid_names)], type=str)
-        entity_model = create_model("PassageEntity", entity_name=(entity_enum, Field(...)), passages=(List[str], Field(..., min_length=1)))
-        return create_model("PassageOutput", entities=(List[entity_model], Field(default_factory=list)))
+
+        speaker_enum = Enum("SpeakerEnum", [(f"s_{i}", s) for i, s in enumerate(all_speakers)], type=str)
+        entity_enum = Enum("EntityEnum", [(f"e_{i}", e) for i, e in enumerate(all_entities)], type=str)
+
+        entity_model = create_model(
+            "PassageEntity",
+            entity_name=(entity_enum, Field(...)),
+            passages=(List[Passage], Field(...)),
+        )
+        speaker_model = create_model(
+            "SpeakerPassages",
+            speaker_name=(speaker_enum, Field(...)),
+            entities=(List[entity_model], Field(...)),
+        )
+        return create_model(
+            "PassageOutput",
+            speakers=(List[speaker_model], Field(...)),
+        )
+
+    @staticmethod
+    def _format_speaker_entity_list(entity_whitelist: Dict[str, List[str]]) -> str:
+        return "\n".join(
+            f"  {speaker}:\n" + "\n".join(f"    - {e}" for e in entities)
+            for speaker, entities in entity_whitelist.items()
+        )
+
+    @staticmethod
+    def _format_error_text(error_message: Optional[str] = None, failed_output: Optional[str] = None) -> str:
+        if not error_message:
+            return ""
+        parts = ["\n\n*** PREVIOUS ATTEMPT FAILED ***\n\n"]
+        if failed_output:
+            parts.append(f"Your previous output:\n{failed_output}\n\n")
+        parts.append(f"Validation error:\n{error_message}\n\nFix the errors and try again.\n")
+        return "".join(parts)
 
     def extract_entities(self, context: ExtractContext) -> StageResult:
-        """Two-phase extraction: extract entity list, then parallel passage extraction per chunk."""
+        """Two-phase extraction: speaker-entity attribution, then parallel passage extraction per chunk."""
         if not context.content:
             raise ValueError("No content found in extraction input")
 
         total_usage = TokenUsage()
+        error_text = self._format_error_text(context.previous_error, context.previous_failed_output)
+        if context.previous_error:
+            logger.info(f"Retrying extraction for {context.id}")
 
-        # Phase 1: entity extraction (single call, full text)
+        # Phase 1: speaker-entity attribution (single call, full text)
         logger.info(f"Phase 1 starting for {context.id}")
-        entity_list, usage = self._extract_entity_list(context.content)
+        matched_speakers_str = "\n".join(f"  - {s}" for s in context.matched_speakers)
+        entity_whitelist, usage = self._extract_entity_whitelist(
+            context.content, matched_speakers_str, context.content_type, error_text,
+        )
         total_usage.input_tokens += usage.input_tokens
         total_usage.output_tokens += usage.output_tokens
-        logger.info(f"Phase 1 complete — {len(entity_list.entities)} entities for {context.id}")
 
-        if not entity_list.entities:
-            return self._create_result(
-                context.id,
-                ExtractionOutput(entities=[], entity_whitelist=[]),
-                total_usage,
-            )
+        total_entities = sum(len(v) for v in entity_whitelist.values())
+        logger.info(f"Phase 1 complete — {total_entities} entities across {len(entity_whitelist)} speakers for {context.id}")
 
-        # Post-process: omit active speakers from entity list (from filter stage)
-        speakers = set(context.active_speakers)
-        entity_list = self._filter_speakers(entity_list, speakers)
-        if not entity_list.entities:
-            return self._create_result(
-                context.id,
-                ExtractionOutput(entities=[], entity_whitelist=[]),
-                total_usage,
-            )
-        logger.debug(f"Filtered to {len(entity_list.entities)} entities (excluded {len(speakers)} speakers)")
+        if not entity_whitelist:
+            return self._create_result(context.id, ExtractionOutput(), total_usage)
 
         # Phase 2: parallel passage extraction per chunk
-        chunks = self.splitter.split_text(context.content)
-        logger.info(f"Phase 2 starting for {context.id} ({len(chunks)} chunks)")
-        if len(chunks) > 1:
-            logger.debug(f"Phase 2 chunking {context.id}: {len(context.content)} chars -> {len(chunks)} chunks")
+        no_chunk_threshold = int(1.5 * extraction_config.CHUNK_SIZE)
+        chunks = (
+            [context.content]
+            if len(context.content) < no_chunk_threshold
+            else self.splitter.split_text(context.content)
+        )
+        logger.info(f"Phase 2 starting for {context.id} ({len(chunks)} chunks, {len(context.content)} chars)")
 
-        chunk_results, chunk_usage = self._extract_passages_parallel(chunks, entity_list)
+        chunk_results, chunk_usage = self._extract_passages_parallel(chunks, entity_whitelist, context.content_type)
         total_usage.input_tokens += chunk_usage.input_tokens
         total_usage.output_tokens += chunk_usage.output_tokens
 
-        merged = self._merge(chunk_results, entity_list)
-        logger.info(f"Phase 2 complete — {len(merged.entities)} entities with passages for {context.id}")
+        by_speaker = self._merge(chunk_results, entity_whitelist)
+        total_passages = sum(len(p) for entities in by_speaker.values() for p in entities.values())
+        logger.info(f"Phase 2 complete — {total_passages} passages across {len(by_speaker)} speakers for {context.id}")
 
-        output = ExtractionOutput(
-            entities=merged.entities,
-            entity_whitelist=entity_list.entities,
-        )
+        output = ExtractionOutput(by_speaker=by_speaker, entity_whitelist=entity_whitelist)
         return self._create_result(context.id, output, total_usage)
 
-    def _extract_entity_list(self, content: str) -> tuple[EntityListOutput, TokenUsage]:
+    @staticmethod
+    def _parse_usage(usage_cb) -> TokenUsage:
+        return TokenUsage(
+            input_tokens=sum(v.get("input_tokens", 0) for v in usage_cb.usage_metadata.values()),
+            output_tokens=sum(v.get("output_tokens", 0) for v in usage_cb.usage_metadata.values()),
+        )
+
+    def _extract_entity_whitelist(
+        self, content: str, matched_speakers_str: str, content_type: str, error_text: str,
+    ) -> tuple[Dict[str, List[str]], TokenUsage]:
         with get_usage_metadata_callback() as usage_cb:
-            response = self.entity_chain.invoke({"content": content})
-            raw = next(iter(usage_cb.usage_metadata.values()), {})
-            usage = TokenUsage(
-                input_tokens=raw.get("input_tokens", 0),
-                output_tokens=raw.get("output_tokens", 0),
-            )
-            parsed = response["parsed"]
-            parsed = EntityListOutput(entities=list(set(parsed.entities)))
-            return parsed, usage
+            parsed: SpeakerEntityMap = self.entity_chain.invoke({
+                "content": content,
+                "matched_speakers": matched_speakers_str,
+                "content_type": content_type,
+                "previous_error_text": error_text,
+            })
+        return {
+            s.speaker: list(dict.fromkeys(e.strip() for e in s.entities if e.strip()))
+            for s in parsed.speakers
+            if s.entities
+        }, self._parse_usage(usage_cb)
 
     def _extract_passages_parallel(
         self,
         chunks: List[str],
-        entity_list: EntityListOutput,
-    ) -> tuple[list[ExtractionOutput], TokenUsage]:
-        schema = self._passage_schema(entity_list)
+        entity_whitelist: Dict[str, List[str]],
+        content_type: str,
+    ) -> tuple[list[dict], TokenUsage]:
+        schema = self._passage_schema(entity_whitelist)
         if schema is None:
             return [], TokenUsage()
 
         passage_chain = (
-            self._passage_input_map
+            {
+                "content_type": lambda x: x["content_type"],
+                "speaker_entity_list": lambda x: x["speaker_entity_list"],
+                "content": lambda x: x["content"],
+            }
             | self.passage_prompt
-            | self.llm.with_structured_output(schema, include_raw=True)
+            | self.llm.with_structured_output(schema)
         )
-
-        entity_list_str = "\n".join(f"  - {e}" for e in entity_list.entities)
+        speaker_entity_list = self._format_speaker_entity_list(entity_whitelist)
         inputs = [
-            {"entity_list": entity_list_str, "content": chunk}
+            {"speaker_entity_list": speaker_entity_list, "content": chunk, "content_type": content_type}
             for chunk in chunks
         ]
 
         with get_usage_metadata_callback() as usage_cb:
-            responses = passage_chain.batch(
-                inputs,
-                config={"max_concurrency": extraction_config.MAX_CONCURRENT_CHUNKS},
-            )
-            raw = next(iter(usage_cb.usage_metadata.values()), {})
-            usage = TokenUsage(
-                input_tokens=raw.get("input_tokens", 0),
-                output_tokens=raw.get("output_tokens", 0),
-            )
+            responses = passage_chain.batch(inputs, config={"max_concurrency": extraction_config.MAX_CONCURRENT_CHUNKS})
 
-        results = []
-        for r in responses:
-            parsed = r["parsed"]
-            entities = [
-                ExtractedEntity(entity_name=e.entity_name.value, passages=e.passages)
-                for e in parsed.entities
-            ]
-            results.append(ExtractionOutput(entities=entities))
-        return results, usage
+        return [
+            {
+                speaker_obj.speaker_name.value: {
+                    entity_obj.entity_name.value: list(entity_obj.passages)
+                    for entity_obj in speaker_obj.entities
+                }
+                for speaker_obj in r.speakers
+            }
+            for r in responses
+        ], self._parse_usage(usage_cb)
 
-    def _merge(self, chunk_results: List[ExtractionOutput], allowed_entities: EntityListOutput) -> ExtractionOutput:
-        """Merge chunk results: group by entity name, fuzzy-dedup passages."""
-        passages_by_entity: dict[str, list[str]] = defaultdict(list)
-        
-        valid_entity_names = {e.strip() for e in allowed_entities.entities}
+    def _merge(
+        self,
+        chunk_results: list[dict],
+        entity_whitelist: Dict[str, List[str]],
+    ) -> Dict[str, Dict[str, List[Passage]]]:
+        """Merge chunk results: group by (speaker, entity), fuzzy-dedup on verbatim."""
+        by_speaker: dict[str, dict[str, list[Passage]]] = defaultdict(lambda: defaultdict(list))
+        seen_verbatims: dict[tuple, list[str]] = defaultdict(list)
+        valid = {speaker: set(entities) for speaker, entities in entity_whitelist.items()}
 
-        for result in chunk_results:
-            for entity in result.entities:
-                if entity.entity_name not in valid_entity_names:
-                    logger.info(f"Discarding hallucinated entity from Phase 2: {entity.entity_name}")
+        for chunk in chunk_results:
+            for speaker, entities in chunk.items():
+                if speaker not in valid:
+                    logger.info(f"Discarding hallucinated speaker from Phase 2: {speaker}")
                     continue
-                    
-                existing = passages_by_entity[entity.entity_name]
-                for passage in entity.passages:
-                    if not self._is_duplicate(passage, existing):
-                        existing.append(passage)
+                for entity, passages in entities.items():
+                    if entity not in valid[speaker]:
+                        logger.info(f"Discarding hallucinated entity '{entity}' for speaker '{speaker}'")
+                        continue
+                    key = (speaker, entity)
+                    for passage in passages:
+                        if not self._is_duplicate(passage.verbatim, seen_verbatims[key]):
+                            by_speaker[speaker][entity].append(passage)
+                            seen_verbatims[key].append(passage.verbatim)
 
-        entities = [
-            ExtractedEntity(entity_name=name, passages=passages)
-            for name, passages in passages_by_entity.items()
-            if passages
-        ]
-        return ExtractionOutput(entities=entities)
-
-    @staticmethod
-    def _filter_speakers(entity_list: EntityListOutput, speakers: Set[str]) -> EntityListOutput:
-        """Remove entities that are active speakers in the transcript."""
-        filtered = [e for e in entity_list.entities if e.strip() not in speakers]
-        return EntityListOutput(entities=filtered)
+        return {
+            speaker: {entity: passages for entity, passages in entities.items() if passages}
+            for speaker, entities in by_speaker.items()
+        }
 
     @staticmethod
     def _is_duplicate(candidate: str, existing: List[str]) -> bool:
@@ -228,13 +260,10 @@ class Extractor:
         )
 
     def _create_result(self, id: str, data: ExtractionOutput, token_usage: TokenUsage) -> StageResult:
-        artifact = ExtractionResult(
-            id=id, success=True, data=data, error_message=None
-        )
+        artifact = ExtractionResult(id=id, success=True, data=data, error_message=None)
         metadata = ExtractStageMetadata(
             model_used=extraction_config.LLM_MODEL,
             input_tokens=token_usage.input_tokens,
             output_tokens=token_usage.output_tokens,
         ).model_dump()
-        logger.debug(f"Extracted {len(data.entities)} entities for {id}")
         return StageResult(artifact=artifact.model_dump(mode='json'), metadata=metadata)

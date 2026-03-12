@@ -1,11 +1,11 @@
 """Data models for categorization domain."""
 
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from src.shared.models import StageOperationResult
+from src.shared.pipeline_definitions import StageOperationResult
 
 
 class TopicCategory(str, Enum):
@@ -64,100 +64,65 @@ class SentimentLevel(str, Enum):
         return obj
 
 
-class Claim(BaseModel):
-    """Specific claim made within a topic"""
+class ClaimLLM(BaseModel):
+    """LLM output: indices into passages array."""
     model_config = ConfigDict(use_enum_values=True)
+    speaker: str = Field(...)
+    topic: TopicCategory = Field(...)
+    claim_label: str = Field(..., min_length=2, max_length=50)
+    sentiment: SentimentLevel = Field(...)
+    summary: str = Field(...)
+    passage_indices: List[int] = Field(..., min_length=1)
 
-    subject_name: str = Field(
-        ..., 
-        min_length=2,
-        max_length=50,
-        description="1-3 word description of the specific claim (2 words preferred)"
-    )
-    
-    sentiment: SentimentLevel = Field(..., description="Speaker's feeling toward this specific claim")
-    
-    quotes: List[str] = Field(
-        ...,
-        min_items=1,
-        max_items=10,
-        description="Include all relevant verbatim quotes (up to 10 per claim)"
-    )
-    
-    @field_validator('subject_name')
+    @field_validator('claim_label')
     @classmethod
-    def validate_word_count(cls, v: str) -> str:
-        """Ensure subject_name is 1-3 words"""
-        word_count = len(v.split())
-        if word_count < 1 or word_count > 3:
-            raise ValueError(f"subject_name must be 1-3 words, got {word_count} words: '{v}'")
+    def claim_label_words(cls, v: str) -> str:
+        n = len(v.split())
+        if n < 1 or n > 3:
+            raise ValueError(f"claim_label must be 1-3 words: '{v}'")
         return v
 
 
-class Topic(BaseModel):
-    """Discussion of an entity by a specific speaker within a topic category"""
+class Claim(BaseModel):
+    """Saved output: resolved verbatim passages."""
     model_config = ConfigDict(use_enum_values=True)
+    speaker: str = Field(...)
+    topic: TopicCategory = Field(...)
+    claim_label: str = Field(..., min_length=2, max_length=50)
+    sentiment: SentimentLevel = Field(...)
+    summary: str = Field(...)
+    passages: List[str] = Field(..., min_length=1)
 
-    speaker: str = Field(..., description="Speaker ID (from matched_speakers) who made this topic discussion")
+    @field_validator('claim_label')
+    @classmethod
+    def claim_label_words(cls, v: str) -> str:
+        n = len(v.split())
+        if n < 1 or n > 3:
+            raise ValueError(f"claim_label must be 1-3 words: '{v}'")
+        return v
 
-    topic: TopicCategory = Field(..., description="Topic category where entity was discussed")
-    
-    context: str = Field(
-        ..., 
-        min_length=30, 
-        max_length=500,
-        description="Summary of how this speaker discussed this entity in this topic"
-    )
-    
-    claims: List[Claim] = Field(
-        ...,
-        min_items=1,
-        description="List of specific claims this speaker made about this entity in this topic"
-    )
+
+class EntityMentionLLM(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+    entity_name: str = Field(..., min_length=1, max_length=200)
+    entity_type: EntityType = Field(...)
+    claims: List[ClaimLLM] = Field(..., min_length=1)
 
 
 class EntityMention(BaseModel):
-    """Entity with all its topic discussions"""
+    """Entity with its claims."""
     model_config = ConfigDict(use_enum_values=True)
-
-    entity_name: str = Field(
-        ..., 
-        min_length=1, 
-        max_length=200,
-        description="Canonical name for this entity (e.g., 'Apple', 'China', 'Joe Biden')"
-    )
-    
-    entity_type: EntityType = Field(..., description="Type of entity")
-    
-    topics: List[Topic] = Field(
-        ...,
-        min_items=1,
-        description="List of topic discussions, one per (speaker, topic) pair"
-    )
-    
-    @field_validator('topics')
-    @classmethod
-    def validate_unique_speaker_topic_pairs(cls, topics: List[Topic]) -> List[Topic]:
-        """Ensure each (speaker, topic) pair appears only once per entity"""
-        keys: List[Tuple[str, str]] = [(t.speaker, t.topic) for t in topics]
-        if len(keys) != len(set(keys)):
-            duplicates = {k for k in keys if keys.count(k) > 1}
-            raise ValueError(f"Duplicate (speaker, topic) pairs found: {duplicates}. Each entity must have ONE topic per (speaker, topic).")
-        return topics
-
-
-class ExtractedEntityInput(BaseModel):
-    """Single entity from the extract stage, with passages to categorize."""
-    entity_name: str = Field(..., description="Canonical entity name")
-    passages: List[str] = Field(..., description="Passages with [display_name] speaker markers")
+    entity_name: str = Field(..., min_length=1, max_length=200)
+    entity_type: EntityType = Field(...)
+    claims: List[Claim] = Field(..., min_length=1)
 
 
 class CategorizationInput(BaseModel):
     """Input fields for categorization."""
-    title: str = Field(..., description="Title of the scraped content")
-    content_date: str = Field(..., description="Date when the content was created/published")
-    entities: List[ExtractedEntityInput] = Field(..., description="Entities with passages from extract stage")
-    matched_speakers: Dict[str, str] = Field(..., description="Tracked speakers present in content: id -> display_name")
+    title: str = Field(...)
+    content_date: str = Field(...)
+    passages: List[Dict[str, str]] = Field(..., description="Flat list: {entity_name, speaker, verbatim}")
+    matched_speakers: List[str] = Field(..., description="Tracked speakers present in content (display names)")
 
 
 class CategorizeContext(BaseModel):
@@ -168,18 +133,31 @@ class CategorizeContext(BaseModel):
     previous_failed_output: Optional[str] = Field(None, description="Previous failed output if retrying")
 
 
-class CategorizationOutput(BaseModel):
-    """Output schema for the entire categorization"""
-    entities: List[EntityMention] = Field(description="List of entities with their topic discussions")
+class CategorizationOutputLLM(BaseModel):
+    """LLM structured output."""
+    entities: List[EntityMentionLLM] = Field(...)
 
     @field_validator('entities')
     @classmethod
-    def validate_unique_entity_names(cls, entities: List[EntityMention]) -> List[EntityMention]:
-        """Ensure each entity name appears only once (case-insensitive)"""
+    def unique_entities(cls, entities: List[EntityMentionLLM]) -> List[EntityMentionLLM]:
         entity_names = [e.entity_name.lower() for e in entities]
         if len(entity_names) != len(set(entity_names)):
-            duplicates = [name for name in entity_names if entity_names.count(name) > 1]
-            raise ValueError(f"Duplicate entity names found: {set(duplicates)}. Each entity should appear only once.")
+            duplicates = {n for n in entity_names if entity_names.count(n) > 1}
+            raise ValueError(f"Duplicate entity names: {duplicates}")
+        return entities
+
+
+class CategorizationOutput(BaseModel):
+    """Saved output with resolved passages."""
+    entities: List[EntityMention] = Field(...)
+
+    @field_validator('entities')
+    @classmethod
+    def unique_entities(cls, entities: List[EntityMention]) -> List[EntityMention]:
+        entity_names = [e.entity_name.lower() for e in entities]
+        if len(entity_names) != len(set(entity_names)):
+            duplicates = {n for n in entity_names if entity_names.count(n) > 1}
+            raise ValueError(f"Duplicate entity names: {duplicates}")
         return entities
 
 
@@ -193,17 +171,3 @@ class CategorizeStageMetadata(BaseModel):
 class CategorizationResult(StageOperationResult[CategorizationOutput]):
     """Result of categorization operation (artifact only, no metadata)."""
     pass
-
-
-class CategorizeItem(BaseModel):
-    """Input record required for categorization."""
-    id: str = Field(..., description="Identifier of the pipeline item to categorize")
-    latest_completed_stage: str = Field(..., description="Last stage completed for this item")
-    stages: Dict[str, Any] = Field(default_factory=dict, description="Per-stage metadata")
-    error_message: Optional[str] = Field(None, description="Previous error message if categorization is a retry")
-    
-    def get_current_file_path(self) -> Optional[str]:
-        """Get file path for the latest completed stage"""
-        if self.latest_completed_stage and self.latest_completed_stage in self.stages:
-            return self.stages[self.latest_completed_stage].get('file_path')
-        return None

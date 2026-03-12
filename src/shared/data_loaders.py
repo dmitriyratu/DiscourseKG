@@ -26,8 +26,6 @@ class DataLoader:
         try:
             with open(path, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except FileNotFoundError:
-            raise FileNotFoundError(f"File not found: {path}")
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON in {path}: {e}")
 

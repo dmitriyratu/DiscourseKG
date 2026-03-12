@@ -4,9 +4,7 @@ from src.shared.base_endpoint import BaseEndpoint
 from src.shared.data_loaders import DataLoader
 from src.shared.pipeline_definitions import EndpointResponse, PipelineStages, PipelineState
 from src.categorize.pipeline import categorize_content
-from src.categorize.models import (
-    CategorizationInput, CategorizeContext, CategorizationResult, ExtractedEntityInput,
-)
+from src.categorize.models import CategorizationInput, CategorizeContext, CategorizationResult
 from src.extract.models import ExtractionResult
 
 
@@ -18,12 +16,12 @@ class CategorizeEndpoint(BaseEndpoint):
 
     def execute(self, state: PipelineState) -> EndpointResponse:
         """Execute the categorization process for a single item."""
-        entities = self._load_extracted_entities(state)
+        passages = self._load_passages(state)
 
         categorization_input = CategorizationInput(
             title=state.title,
             content_date=state.publication_date,
-            entities=entities,
+            passages=passages,
             matched_speakers=state.matched_speakers,
         )
         processing_context = CategorizeContext(
@@ -41,24 +39,19 @@ class CategorizeEndpoint(BaseEndpoint):
             f"Successfully categorized item {state.id} - {len(categorization_result.data.entities)} entities"
         )
 
-        return self._create_success_response(
-            result=stage_result.artifact,
-            stage=PipelineStages.CATEGORIZE.value,
-            state_update=stage_result.metadata,
-        )
+        return self._success(stage_result, PipelineStages.CATEGORIZE)
 
-    def _load_extracted_entities(self, state: PipelineState) -> list[ExtractedEntityInput]:
-        """Load entities from the extract stage output."""
+    def _load_passages(self, state: PipelineState) -> list[dict]:
+        """Traverse extract by_speaker and build flat passage list (0-indexed)."""
         extract_path = state.get_file_path_for_stage(PipelineStages.EXTRACT.value)
         if not extract_path:
             raise ValueError(f"No extract stage output found for {state.id}")
-
-        output = DataLoader.load(extract_path)
-        result = ExtractionResult.model_validate(output)
-        if not result.data or not result.data.entities:
+        result = ExtractionResult.model_validate(DataLoader.load(extract_path))
+        if not result.data or not result.data.by_speaker:
             raise ValueError(f"No entities found in extract output for {state.id}")
-
         return [
-            ExtractedEntityInput(entity_name=e.entity_name, passages=e.passages)
-            for e in result.data.entities
+            {"entity_name": e, "speaker": s, "verbatim": p.verbatim}
+            for s, entities in result.data.by_speaker.items()
+            for e, passages in entities.items()
+            for p in passages
         ]

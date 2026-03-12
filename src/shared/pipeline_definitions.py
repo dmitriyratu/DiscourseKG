@@ -5,11 +5,19 @@ Used across the DiscourseKG pipeline to keep stage enums, status
 constants, and shared data models centralized.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Generic, List, Optional, TypeVar
 from enum import Enum
 from pydantic import BaseModel, Field, computed_field
 
-from src.shared.models import StageOperationResult
+T = TypeVar("T")
+
+
+class StageOperationResult(BaseModel, Generic[T]):
+    """Base result model for all pipeline stage operations."""
+    id: str = Field(..., description="Unique identifier")
+    success: bool = Field(..., description="Whether operation was successful")
+    data: Optional[T] = Field(None, description="Operation data if successful")
+    error_message: Optional[str] = Field(None, description="Error message if failed")
 
 
 class PipelineStageStatus(str, Enum):
@@ -109,31 +117,26 @@ class PipelineState(BaseModel):
     # Stage-specific data (detailed breakdown)
     stages: Dict[str, StageMetadata] = Field(default_factory=dict, description="Per-stage metadata")
 
+    def _filter_meta(self) -> Dict[str, Any]:
+        return (self.stages.get("filter") or StageMetadata()).metadata
+
     @computed_field
     @property
-    def matched_speakers(self) -> Dict[str, str]:
-        """From filter stage metadata."""
-        meta = (self.stages.get("filter") or StageMetadata()).metadata
-        return meta.get("matched_speakers") or {}
+    def content_type(self) -> str:
+        return self._filter_meta().get("content_type") or "unknown"
+
+    @computed_field
+    @property
+    def matched_speakers(self) -> List[str]:
+        return self._filter_meta().get("matched_speakers") or []
 
     @computed_field
     @property
     def active_speakers(self) -> List[str]:
-        """From filter stage metadata."""
-        meta = (self.stages.get("filter") or StageMetadata()).metadata
-        return meta.get("active_speakers") or []
-
-    def get_current_file_path(self) -> Optional[str]:
-        """Get file path for the latest completed stage"""
-        if self.latest_completed_stage and self.latest_completed_stage in self.stages:
-            return self.stages[self.latest_completed_stage].file_path
-        return None
+        return self._filter_meta().get("active_speakers") or []
 
     def get_file_path_for_stage(self, stage: str) -> Optional[str]:
-        """Get file path for a specific stage"""
-        if stage in self.stages:
-            return self.stages[stage].file_path
-        return None
+        return self.stages[stage].file_path if stage in self.stages else None
 
     def article_fields(self) -> ArticleFields:
         """Article-level fields for denormalization onto stage rows."""

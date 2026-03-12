@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from src.config import config
 from src.categorize.models import CategorizationResult
 from src.filter.models import FilterStageMetadata
 from src.graph.config import graph_config
@@ -13,6 +12,7 @@ from src.shared.data_loaders import DataLoader
 from src.shared.models import ContentType
 from src.shared.pipeline_definitions import PipelineStages
 from src.scrape.models import ScrapingResult
+from src.speakers import SPEAKERS_FILE
 from src.speakers.models import SpeakerRegistry
 from src.summarize.models import SummarizationResult
 from src.utils.logging_utils import get_logger
@@ -93,24 +93,23 @@ class GraphDataAssembler:
             compression_ratio=compression_ratio,
         )
 
-    def _load_speakers(self, matched_speakers: Dict[str, str]) -> List[SpeakerNode]:
-        """Load speaker metadata from speakers.json for each matched speaker id."""
+    def _load_speakers(self, matched_speakers: List[str]) -> List[SpeakerNode]:
+        """Load speaker metadata from speakers.json for each matched speaker (display names)."""
         if not matched_speakers:
             raise ValueError("No matched speakers provided")
 
-        speakers_file = Path(config.PROJECT_ROOT) / "data" / "speakers.json"
-        with open(speakers_file) as f:
+        with open(SPEAKERS_FILE) as f:
             registry = SpeakerRegistry(**json.load(f))
 
         results = []
-        for speaker_id, display_name in matched_speakers.items():
-            if speaker_id not in registry.speakers:
-                logger.warning(f"Speaker '{speaker_id}' not found in speakers.json, skipping")
+        for display_name in matched_speakers:
+            if display_name not in registry.speakers:
+                logger.warning(f"Speaker '{display_name}' not found in speakers.json, skipping")
                 continue
-            speaker_obj = registry.speakers[speaker_id]
+            speaker_obj = registry.speakers[display_name]
             industry = getattr(speaker_obj.industry, "value", speaker_obj.industry)
             results.append(SpeakerNode(
-                name_id=speaker_id,
+                name_id=display_name,
                 name=display_name,
                 display_name=display_name,
                 role=speaker_obj.role,
@@ -120,7 +119,7 @@ class GraphDataAssembler:
             ))
 
         if not results:
-            raise ValueError(f"None of the matched speakers found in registry: {list(matched_speakers.keys())}")
+            raise ValueError(f"None of the matched speakers found in registry: {matched_speakers}")
         return results
 
     def _preprocess_entities(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -134,30 +133,39 @@ class GraphDataAssembler:
             raise
 
     def _compute_aggregated_sentiment(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Compute aggregated sentiment for each topic from its claims."""
+        """Group flat claims by (speaker, topic) and compute aggregated sentiment for Neo4j."""
+        result = []
         for entity in entities:
-            for topic in entity.get("topics", []):
-                claims = topic.get("claims", [])
-                if not claims:
-                    topic["aggregated_sentiment"] = {}
-                    continue
+            claims = entity["claims"]
+            if not claims:
+                continue
 
+            topics_map: Dict[tuple, List[Dict]] = {}
+            for claim in claims:
+                key = (claim["speaker"], claim["topic"])
+                topics_map.setdefault(key, []).append(claim)
+
+            topics = []
+            for (speaker, topic), group_claims in topics_map.items():
                 sentiment_counts = {}
-                for claim in claims:
-                    sentiment_value = claim.get("sentiment")
-                    if sentiment_value:
-                        sentiment_counts[sentiment_value] = sentiment_counts.get(sentiment_value, 0) + 1
-
-                total_claims = len(claims)
-                topic["aggregated_sentiment"] = {
-                    sentiment: {
-                        "count": count,
-                        "prop": round(count / total_claims, graph_config.DECIMAL_PRECISION),
-                    }
-                    for sentiment, count in sentiment_counts.items()
+                for c in group_claims:
+                    sv = c["sentiment"]
+                    sentiment_counts[sv] = sentiment_counts.get(sv, 0) + 1
+                total = len(group_claims)
+                aggregated_sentiment = {
+                    s: {"count": cnt, "prop": round(cnt / total, graph_config.DECIMAL_PRECISION)}
+                    for s, cnt in sentiment_counts.items()
                 }
-
-        return entities
+                context = group_claims[0]["summary"][:500]
+                topics.append({
+                    "speaker": speaker,
+                    "topic": topic,
+                    "context": context,
+                    "claims": group_claims,
+                    "aggregated_sentiment": aggregated_sentiment,
+                })
+            result.append({**entity, "topics": topics})
+        return result
 
     def _validate_entities(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Validate entity data before Neo4j loading."""
@@ -168,5 +176,4 @@ class GraphDataAssembler:
                 raise ValueError(f"Entity missing entity_type: {entity}")
             if not entity.get("topics"):
                 raise ValueError(f"Entity has no topics: {entity['entity_name']}")
-
         return entities

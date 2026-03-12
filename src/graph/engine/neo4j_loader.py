@@ -125,7 +125,7 @@ class Neo4jLoader:
             entity_stats = self._load_entity_node(session, entity)
             nodes_created += entity_stats.nodes_created
 
-            for topic in entity.get("topics", []):
+            for topic in entity["topics"]:
                 topic_stats = self._load_topic_and_claims(
                     session, comm_id, entity["entity_name"], topic
                 )
@@ -158,9 +158,8 @@ class Neo4jLoader:
     ) -> GraphData:
         """Load Topic node with Claims and create relationships."""
         
-        topic = mention.get("topic", "")
-
-        speaker = mention.get("speaker", "")
+        topic = mention["topic"]
+        speaker = mention["speaker"]
         topic_query = """
         MATCH (c:Communication {id: $comm_id})
         MATCH (e:Entity {canonical_name: $entity_name})
@@ -191,7 +190,7 @@ class Neo4jLoader:
         nodes_created = 1
         relationships_created = 2
 
-        for claim in mention.get("claims", []):
+        for claim in mention["claims"]:
             claim_stats = self._load_claim_node(
                 session, topic_node["t"].element_id, claim
             )
@@ -207,10 +206,11 @@ class Neo4jLoader:
         query = """
         MATCH (t:Topic) WHERE elementId(t) = $topic_id
         CREATE (cl:Claim {
-            name: $subject_name,
-            subject_name: $subject_name,
+            name: $claim_label,
+            subject_name: $claim_label,
             sentiment: $sentiment,
-            quotes: $quotes
+            summary: $summary,
+            passages: $passages
         })
         CREATE (t)-[:HAS_CLAIM]->(cl)
         RETURN cl
@@ -218,8 +218,9 @@ class Neo4jLoader:
         result = session.run(
             query,
             topic_id=topic_id,
-            subject_name=claim["subject_name"],
+            claim_label=claim["claim_label"],
             sentiment=claim["sentiment"],
-            quotes=claim["quotes"],
+            summary=claim["summary"],
+            passages=claim["passages"],
         )
         return self._create_stats(nodes=1 if result.single() else 0, relationships=1)

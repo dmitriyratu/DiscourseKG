@@ -3,12 +3,12 @@
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional
 
-from src.shared.models import StageOperationResult
+from src.shared.pipeline_definitions import StageOperationResult
 
 
 class SpeakerNode(BaseModel):
     """Speaker data for Neo4j node creation."""
-    name_id: str = Field(..., description="Speaker ID from matched_speakers")
+    name_id: str = Field(..., description="Speaker display name from matched_speakers")
     name: str = Field(..., description="Display name")
     display_name: str = Field(..., description="Display name")
     role: str = Field(default="", description="Speaker role")
@@ -53,14 +53,7 @@ class GraphContext(BaseModel):
     """Processing context for graph loading operation."""
     id: str = Field(..., description="Unique identifier for the item")
     stages: Dict[str, Any] = Field(default_factory=dict, description="Per-stage metadata")
-    matched_speakers: Dict[str, str] = Field(default_factory=dict, description="Matched speakers: id -> display_name")
+    matched_speakers: List[str] = Field(default_factory=list, description="Matched speakers (display names)")
     title: Optional[str] = Field(None, description="Article title")
     publication_date: Optional[str] = Field(None, description="Publication date (YYYY-MM-DD)")
     source_url: Optional[str] = Field(None, description="Article URL")
-
-
-class GraphItem(BaseModel):
-    """Input record required for graph loading."""
-    id: str = Field(..., description="Identifier of the pipeline item to load")
-    stages: Dict[str, Any] = Field(default_factory=dict, description="Per-stage metadata")
-    matched_speakers: Dict[str, str] = Field(default_factory=dict, description="Matched speakers: id -> display_name")

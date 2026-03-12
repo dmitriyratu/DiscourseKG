@@ -33,8 +33,4 @@ class SummarizeEndpoint(BaseEndpoint):
         # Parse artifact using SummarizationResult model
         summarization_result = SummarizationResult.model_validate(stage_result.artifact)
         
-        return self._create_success_response(
-            result=stage_result.artifact,
-            stage=PipelineStages.SUMMARIZE.value,
-            state_update=stage_result.metadata
-        )
+        return self._success(stage_result, PipelineStages.SUMMARIZE)

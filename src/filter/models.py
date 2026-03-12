@@ -1,8 +1,9 @@
 """Data models for filter domain."""
 
-from typing import Dict, List, Optional
+from typing import List, Optional
 from pydantic import BaseModel, Field
-from src.shared.models import ContentType, StageOperationResult
+from src.shared.models import ContentType
+from src.shared.pipeline_definitions import StageOperationResult
 
 
 class LLMFilterOutput(BaseModel):
@@ -19,7 +20,7 @@ class FilterOutput(BaseModel):
     """Full filter result with computed fields."""
     content_type: ContentType = Field(..., description="from CONTENT TYPE options above: {content_type_options}")
     active_speakers: List[str] = Field(..., description="All active contributors found in content")
-    matched_speakers: Dict[str, str] = Field(..., description="Matched speakers: id -> display_name")
+    matched_speakers: List[str] = Field(..., description="Matched speakers (display names)")
     is_relevant: bool = Field(..., description="Whether any tracked speaker is an active contributor")
     reason: str = Field(..., description="Brief explanation of the filtering decision")
 
@@ -30,7 +31,6 @@ class FilterContext(BaseModel):
     title: str = Field(..., description="Article title")
     content: str = Field(..., description="Scrape text")
     tracked_speaker_hints: List[str] = Field(..., description="Display names from speakers.json for normalization")
-    display_name_to_id: Dict[str, str] = Field(..., description="Display name -> speaker id for mapping matches")
 
 
 class FilterStageMetadata(BaseModel):
@@ -40,7 +40,7 @@ class FilterStageMetadata(BaseModel):
     input_tokens: int = Field(default=0, description="Input tokens used")
     output_tokens: int = Field(default=0, description="Output tokens used")
     active_speakers: List[str] = Field(default_factory=list, description="Active speakers (for downstream exclusion)")
-    matched_speakers: Dict[str, str] = Field(default_factory=dict, description="Matched speakers: id -> display_name")
+    matched_speakers: List[str] = Field(default_factory=list, description="Matched speakers (display names)")
 
 
 class FilterResult(StageOperationResult[FilterOutput]):

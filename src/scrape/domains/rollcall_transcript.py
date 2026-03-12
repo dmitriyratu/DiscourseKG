@@ -4,7 +4,7 @@
 # Instructions: Focus on extracting speaker dialogue
 
 from bs4 import BeautifulSoup
-import re
+
 
 def extract(html: str) -> str:
     """

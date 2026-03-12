@@ -6,9 +6,8 @@ using autonomous web scraping.
 """
 
 from src.shared.base_endpoint import BaseEndpoint
-from src.shared.pipeline_definitions import EndpointResponse
+from src.shared.pipeline_definitions import EndpointResponse, PipelineStages
 from src.discover.pipeline import discover_content
-from src.shared.pipeline_definitions import PipelineStages
 from src.discover.models import DiscoveryRequest
 
 
@@ -24,8 +23,4 @@ class DiscoverEndpoint(BaseEndpoint):
         self.logger.debug(f"Discovery parameters: {len(discovery_params.search_urls)} search URLs")
         
         stage_result = discover_content(discovery_params)
-        return self._create_success_response(
-            result=stage_result.artifact,
-            stage=PipelineStages.DISCOVER.value,
-            state_update=stage_result.metadata
-        )
+        return self._success(stage_result, PipelineStages.DISCOVER)

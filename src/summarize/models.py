@@ -1,8 +1,8 @@
 """Data models for summarization domain."""
 
 from pydantic import BaseModel, Field
-from typing import Dict, Any, Optional
-from src.shared.models import StageOperationResult
+from typing import Optional
+from src.shared.pipeline_definitions import StageOperationResult
 
 
 class SummarizeStageMetadata(BaseModel):
@@ -21,19 +21,6 @@ class SummarizationData(BaseModel):
 class SummarizationResult(StageOperationResult[SummarizationData]):
     """Result of summarization operation (artifact only, no metadata)."""
     pass
-
-
-class SummarizeItem(BaseModel):
-    """Input record required for summarization."""
-    id: str = Field(..., description="Identifier of the pipeline item to summarize")
-    latest_completed_stage: str = Field(..., description="Last stage completed for this item")
-    stages: Dict[str, Any] = Field(default_factory=dict, description="Per-stage metadata")
-    
-    def get_current_file_path(self) -> Optional[str]:
-        """Get file path for the latest completed stage"""
-        if self.latest_completed_stage and self.latest_completed_stage in self.stages:
-            return self.stages[self.latest_completed_stage].get('file_path')
-        return None
 
 
 class SummarizeContext(BaseModel):

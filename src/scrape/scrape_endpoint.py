@@ -3,9 +3,8 @@ Scrape endpoint for collecting speaker transcripts.
 """
 
 from src.shared.base_endpoint import BaseEndpoint
-from src.shared.pipeline_definitions import EndpointResponse
+from src.shared.pipeline_definitions import EndpointResponse, PipelineStages, PipelineState
 from src.scrape.pipeline import scrape_content
-from src.shared.pipeline_definitions import PipelineStages, PipelineState
 from src.scrape.models import ScrapeContext
 
 
@@ -27,8 +26,4 @@ class ScrapeEndpoint(BaseEndpoint):
         # Execute scraping pipeline - returns StageResult
         stage_result = scrape_content(processing_context)
 
-        return self._create_success_response(
-            result=stage_result.artifact,
-            stage=PipelineStages.SCRAPE.value,
-            state_update=stage_result.metadata
-        )
+        return self._success(stage_result, PipelineStages.SCRAPE)

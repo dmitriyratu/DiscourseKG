@@ -1,78 +1,107 @@
-version: "2.0"
+version: "3.0"
 
-# Phase 1: Entity extraction — canonical entity names from full content
+# Phase 1: Speaker-entity attribution — which entities each matched speaker substantively discusses
 entity_system_prompt: |
-  You identify every significant entity discussed in spoken communications ({content_types}) for a knowledge graph.
+  You identify entities substantively discussed by specific tracked speakers in spoken communications (content type: {content_type}) for a knowledge graph.
+
+  ---
+  TRACKED SPEAKERS:
+  {matched_speakers}
 
   ---
   RULES:
-  1. Identify every significant, non-redundant entity discussed in the content
-  2. {canonical_naming_rule}
-  3. Collapse all name variants into ONE canonical form per entity — e.g. "Smith", "President Smith", "Mr. Smith" → "John Smith" (return each entity only once)
-  4. Cover the ENTIRE content — do not stop early or favor the beginning
-  5. Return ONLY entity names — no passages, no descriptions
+  1. For each tracked speaker, list only entities they substantively discuss: at least one direct claim, opinion, or stance (not just a passing mention or name-drop).
+  2. Only include entities the tracked speaker themselves discusses — not entities merely mentioned by other participants.
+  3. Exclude entities where the tracked speaker only asks a question without adding substance.
+  4. Canonical names:
+     - People: use full name (Smith → John Smith; President Xi → Xi Jinping)
+     - Organizations: drop legal suffixes (Apple Inc. → Apple)
+  5. Each entity appears at most once per speaker — no duplicates.
+  6. Cover the ENTIRE content — do not favor the beginning.
+  7. If a tracked speaker does not discuss any entities, return an empty list for them.
 
   ---
   OUTPUT FORMAT:
   {{
-    "entities": ["Entity A", "Entity B", ...]
+    "speakers": [
+      {{
+        "speaker": "Speaker Name",
+        "entities": ["Entity A", "Entity B", ...]
+      }}
+    ]
   }}
 
 entity_user_prompt: |
-  Identify all significant entities discussed in the following content.
+  Identify entities substantively discussed by each tracked speaker in the following content.
+
+  ---
+  TRACKED SPEAKERS:
+  {matched_speakers}
 
   ---
   CONTENT:
   {content}
+  {previous_error_text}
 
   ---
-  Return a flat list of canonical entity names. Each entity must appear exactly once.
+  Return only entities each tracked speaker genuinely discusses. Omit speakers with no qualifying entities.
 
-# Phase 2: Passage extraction — verbatim passages for known entities in a chunk
+# Phase 2: Passage extraction — verbatim exchange per (speaker, entity) pair in a chunk
 passage_system_prompt: |
-  You extract verbatim passages from spoken communications ({content_types}) for a knowledge graph.
-  You are given a STRICT list of known entities and a chunk of content.
+  You extract structured passages from spoken communications (content type: {content_type}) for a knowledge graph.
+  You are given per-speaker entity whitelists and a chunk of content.
+  For each relevant (speaker, entity) pair you produce the verbatim exchange.
 
   ---
-  SPEAKER MARKERS:
-  A speaker marker is the canonical name in brackets, e.g. [Speaker A]. Mark every speaker in a passage with a speaker marker.
-  {canonical_naming_rule}
+  TRACKED SPEAKERS AND THEIR ENTITIES:
+  {speaker_entity_list}
+
+  ---
+  VERBATIM FIELD:
+  Copy the surrounding exchange from the transcript. Rules:
+  1. Always include the question or context that prompted the tracked speaker's response — never start mid-answer.
+  2. Capture the full topically continuous exchange — brief interjections and affirmations do not break it.
+  3. Mark every speaker change with their canonical name in brackets, e.g. [Donald Trump].
+  4. Output clean English: use (inaudible) for unclear speech, join interrupted phrases, remove pure filler — but preserve the actual spoken content.
+  5. Stop when the topic genuinely shifts to something else.
 
   ---
   CRITICAL RULES:
-  1. STRICT WHITELIST: You must ONLY extract passages for entities explicitly provided in the KNOWN ENTITIES list.
-  2. IGNORE NEW ENTITIES: If the speakers discuss a person, place, or concept that is NOT on the KNOWN ENTITIES list, you must completely ignore it. Do not add new entities.
-  3. IGNORE ACTIVE SPEAKERS AS ENTITIES: Do not extract passages where the entity is just the person actively speaking. Entities are what the speakers are *talking about*.
-  4. Use the exact entity names provided — do not rename, re-canonicalize, or fix typos.
-  5. A passage captures the full topically continuous exchange — brief interjections ("Yeah.", "Right.") do not break a passage.
-  6. Passages should be verbatim text from the content with speaker markers injected — do not paraphrase.
-  7. Start a new passage only when the conversation genuinely shifts to a new subject or the entity reappears later.
-
+  1. Extract passages ONLY for (speaker, entity) pairs in the whitelist above. Do not invent speakers or entities.
+  2. Only extract passages where the tracked speaker makes a substantive claim, opinion, or stance about the entity. Skip bare mentions.
+  3. Assign each passage only to the entity it substantively discusses. A passage about topic X does not belong under entity Y merely because both appear in the same chunk.
+  4. Start a new passage only when the topic genuinely shifts or the entity reappears in a clearly different context.
   ---
   OUTPUT FORMAT:
   {{
-    "entities": [
+    "speakers": [
       {{
-        "entity_name": "exact name copied directly from KNOWN ENTITIES list",
-        "passages": [
-          "[Speaker A] question or context\n[Speaker B] response about entity...",
-          "[Speaker B] later mention of entity in different context..."
+        "speaker_name": "exact name from tracked speakers",
+        "entities": [
+          {{
+            "entity_name": "exact name from that speaker's whitelist",
+            "passages": [
+              {{
+                "verbatim": "[Interviewer] question [Tracked Speaker] full response..."
+              }}
+            ]
+          }}
         ]
       }}
     ]
   }}
 
 passage_user_prompt: |
-  Extract passages for the following entities from the content chunk below.
-  If none of these specific entities are discussed, return an empty list.
+  Extract passages for the following (speaker, entity) pairs from the content chunk below.
+  If a speaker or entity from the whitelist is not discussed in this chunk, omit them from the output.
 
   ---
-  KNOWN ENTITIES (STRICT WHITELIST - DO NOT DEVIATE):
-  {entity_list}
+  TRACKED SPEAKERS AND THEIR ENTITIES:
+  {speaker_entity_list}
 
   ---
   CONTENT CHUNK:
   {content}
 
   ---
-  Return entities and passages for ONLY those entities discussed in this chunk that match the KNOWN ENTITIES list exactly.
+  For each passage return the verbatim field (full surrounding exchange with [Speaker] markers).

@@ -17,8 +17,8 @@ from src.shared.pipeline_definitions import (
     PipelineStageStatus,
     PipelineState,
     StageMetadata,
+    StageOperationResult,
 )
-from src.shared.models import StageOperationResult
 from src.discover.models import DiscoveredArticle
 
 logger = get_logger(__name__)
@@ -119,12 +119,12 @@ class PipelineStateManager:
             (PipelineStage.article_id == article_id) & (PipelineStage.stage == stage)
         )
         row_data = self._build_stage_row_data(
-            status.value, stored_error, status, completed_at,
+            status, stored_error, completed_at,
             result_data.processing_time_seconds, file_path,
             result_data.state_update or {}, existing_row=existing_row,
         )
         if article_fields:
-            row_data.update(article_fields)
+            row_data.update(article_fields.model_dump())
 
         filtered = self._filter_row_fields(row_data)
         if existing_row:
@@ -139,8 +139,8 @@ class PipelineStateManager:
         elif status == PipelineStageStatus.COMPLETED:
             logger.debug(f"Completed {stage} for data point: {article_id}")
 
-    def _build_stage_row_data(self, row_status: str, stored_error: str | None,
-                              status: PipelineStageStatus, completed_at: str | None,
+    def _build_stage_row_data(self, status: PipelineStageStatus, stored_error: str | None,
+                              completed_at: str | None,
                               processing_time: float | None, file_path: str | None,
                               custom_metadata: dict[str, Any],
                               existing_row: PipelineStage | None = None) -> dict[str, Any]:
@@ -153,7 +153,7 @@ class PipelineStateManager:
             retry_count = 1 if status == PipelineStageStatus.FAILED else 0
 
         data: dict[str, Any] = {
-            "status": row_status,
+            "status": status.value,
             "error_message": stored_error,
             "retry_count": retry_count,
             "completed_at": completed_at,

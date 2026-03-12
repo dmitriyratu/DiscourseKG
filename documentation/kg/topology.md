@@ -28,9 +28,9 @@ graph TB
     end
     
     subgraph "Level 3: Claims"
-        CL1[Claim<br/>___________<br/>subject_name<br/>sentiment<br/>quotes]
-        CL2[Claim<br/>___________<br/>subject_name<br/>sentiment<br/>quotes]
-        CL3[Claim<br/>___________<br/>subject_name<br/>sentiment<br/>quotes]
+        CL1[Claim<br/>___________<br/>claim_label<br/>sentiment<br/>summary<br/>passages]
+        CL2[Claim<br/>___________<br/>claim_label<br/>sentiment<br/>summary<br/>passages]
+        CL3[Claim<br/>___________<br/>claim_label<br/>sentiment<br/>summary<br/>passages]
     end
     
     S -->|DELIVERED| C
@@ -133,13 +133,14 @@ graph TB
 **Represents**: A specific 1-3 word claim made about an entity within a topic
 
 **Properties**:
-- `subject_name` (string): 1-3 word description (e.g., "Coal Plants", "Trade Policy", "Job Creation")
+- `claim_label` (string): 1-3 word label (e.g., "Coal Plants", "Trade Policy", "Job Creation")
 - `sentiment` (enum): Speaker's feeling toward this claim
   - `positive`: Supportive, favorable
   - `negative`: Critical, opposing
   - `neutral`: Factual, no emotion
   - `unclear`: Cannot determine
-- `quotes` (array of strings): 1-10 verbatim excerpts from full_text about this claim
+- `summary` (string): News-style summary weaving in the speaker's verbatim quotes where possible
+- `passages` (array of strings): Full verbatim transcript passages from extract that support this claim
 
 **Cardinality**: One per distinct claim within a topic
 **Granularity**: Enables fine-grained sentiment analysis (e.g., positive on "Regulatory Approval" but negative on "Security Concerns" for same entity)

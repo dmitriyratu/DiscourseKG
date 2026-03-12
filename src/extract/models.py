@@ -1,29 +1,38 @@
 """Data models for extraction domain."""
 
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from src.shared.models import StageOperationResult
-
-
-class EntityListOutput(BaseModel):
-    """Phase 1 output: canonical entity names only."""
-    entities: List[str] = Field(description="Canonical entity names")
+from src.shared.pipeline_definitions import StageOperationResult
 
 
-class ExtractedEntity(BaseModel):
-    """Single entity with its passages from the LLM."""
-    entity_name: str = Field(..., min_length=1, max_length=200, description="Canonical entity name")
-    passages: List[str] = Field(..., min_items=1, description="Passages where entity is discussed, with speaker markers (canonical name in brackets)")
+class Passage(BaseModel):
+    """A single passage about an entity from a tracked speaker."""
+    model_config = ConfigDict(extra="forbid")
+    verbatim: str = Field(..., description="Full surrounding exchange from the transcript with [Speaker] markers, including the question/context that prompted the response")
+
+
+class SpeakerEntities(BaseModel):
+    """Single speaker with their attributed entities."""
+    speaker: str = Field(..., description="Tracked speaker name")
+    entities: List[str] = Field(..., description="Canonical entity names this speaker substantively discusses")
+
+
+class SpeakerEntityMap(BaseModel):
+    """Phase 1 output: per-speaker entity attribution."""
+    speakers: List[SpeakerEntities] = Field(..., description="List of tracked speakers and their entities")
 
 
 class ExtractionOutput(BaseModel):
     """Output schema for entity extraction."""
-    entities: List[ExtractedEntity] = Field(description="Extracted entities with passages")
-    entity_whitelist: List[str] = Field(
-        default_factory=list,
-        description="Entity whitelist from Phase 1 (after speaker filtering)",
+    by_speaker: Dict[str, Dict[str, List[Passage]]] = Field(
+        default_factory=dict,
+        description="Speaker → entity → passages (verbatim transcript exchanges)",
+    )
+    entity_whitelist: Dict[str, List[str]] = Field(
+        default_factory=dict,
+        description="Phase 1 output: speaker → entity names attributed to that speaker",
     )
 
 
@@ -31,7 +40,8 @@ class ExtractContext(BaseModel):
     """Processing context for extraction operation."""
     id: str = Field(..., description="Unique identifier for the item")
     content: str = Field(..., description="Full text to extract entities from")
-    active_speakers: List[str] = Field(default_factory=list, description="Speaker names to exclude from entities (from filter stage)")
+    content_type: str = Field(default="unknown", description="Content type from filter stage (e.g. interview, speech)")
+    matched_speakers: List[str] = Field(default_factory=list, description="Tracked speakers to extract passages for (from filter stage)")
     previous_error: Optional[str] = Field(None, description="Previous error message if retrying")
     previous_failed_output: Optional[str] = Field(None, description="Previous failed output if retrying")
 
@@ -46,11 +56,3 @@ class ExtractStageMetadata(BaseModel):
 class ExtractionResult(StageOperationResult[ExtractionOutput]):
     """Result of extraction operation."""
     pass
-
-
-class ExtractItem(BaseModel):
-    """Input record required for extraction."""
-    id: str = Field(..., description="Identifier of the pipeline item to extract")
-    latest_completed_stage: str = Field(..., description="Last stage completed for this item")
-    stages: Dict[str, Any] = Field(default_factory=dict, description="Per-stage metadata")
-    error_message: Optional[str] = Field(None, description="Previous error message if extraction is a retry")

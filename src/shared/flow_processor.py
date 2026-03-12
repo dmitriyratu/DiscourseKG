@@ -6,7 +6,7 @@ consistent error handling, persistence, and state management.
 """
 
 import time
-from typing import Callable, Any
+from typing import Any, Callable
 
 from tasks.orchestration import get_items
 from src.shared.pipeline_definitions import (
@@ -17,7 +17,6 @@ from src.shared.pipeline_definitions import (
 )
 from src.shared.pipeline_state import PipelineStateManager
 from src.shared.persistence import save_data
-from src.shared.models import StageOperationResult
 from src.utils.logging_utils import get_logger
 
 
@@ -50,18 +49,16 @@ class FlowProcessor:
             result_data = result.result()
             elapsed = max(0.01, time.time() - start_time)
             result_data = result_data.model_copy(update={'processing_time_seconds': round(elapsed, 2)})
-            output = StageOperationResult[Any].model_validate(result_data.output)
             output_file = save_data(state, result_data.output, stage.value)
             
-            status = result_data.pipeline_status or PipelineStageStatus.COMPLETED
             manager.record_stage_result(
-                status=status,
+                status=result_data.pipeline_status or PipelineStageStatus.COMPLETED,
                 result_data=result_data,
                 file_path=output_file,
                 article_fields=state.article_fields(),
             )
             
-            self.logger.debug(f"Successfully completed {stage} for item {output.id} -> {output_file}")
+            self.logger.debug(f"Successfully completed {stage} for item {state.id} -> {output_file}")
                 
         except Exception as e:
             elapsed = max(0.01, time.time() - start_time)

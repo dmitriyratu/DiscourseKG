@@ -19,7 +19,7 @@ class ExtractionConfig(BaseModel):
     LLM_MAX_OUTPUT_TOKENS: int = Field(default=16384)
     LLM_API_KEY: Optional[str] = Field(default_factory=lambda: os.getenv('OPENAI_API_KEY'))
 
-    CHUNK_SIZE: int = Field(default=6000, description="Max characters per chunk")
+    CHUNK_SIZE: int = Field(default=10_000, description="Max characters per chunk")
     CHUNK_OVERLAP: int = Field(default=500, description="Character overlap between chunks")
     MAX_CONCURRENT_CHUNKS: int = Field(default=50, description="Max parallel chunk calls")
 

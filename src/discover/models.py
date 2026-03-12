@@ -5,10 +5,9 @@ Pydantic models for the discovery stage.
 import hashlib
 from typing import List, Optional, Self
 from pydantic import BaseModel, Field
-from datetime import datetime
 
 from src.discover.agent.models import Article
-from src.shared.models import StageOperationResult
+from src.shared.pipeline_definitions import StageOperationResult
 from src.utils.string_utils import slugify
 
 
@@ -48,17 +47,6 @@ class DiscoveryRequest(BaseModel):
     start_date: str = Field(..., description="Start of discovery date range (YYYY-MM-DD)")
     end_date: Optional[str] = Field(None, description="End of discovery date range (YYYY-MM-DD); None = today")
     search_urls: List[str] = Field(default_factory=list, description="URLs to search for content")
-
-
-class DiscoveryContext(BaseModel):
-    """Processing context for discovery operation."""
-    start_date: str = Field(..., description="Start of discovery date range (YYYY-MM-DD)")
-    end_date: Optional[str] = Field(None, description="End of discovery date range (YYYY-MM-DD); None = today")
-    search_urls: List[str] = Field(..., description="URLs to search for content")
-    run_timestamp: str = Field(
-        default_factory=lambda: datetime.now().strftime("%Y-%m-%d_%H:%M:%S"),
-        description="Timestamp for this discovery run"
-    )
 
 
 class DiscoveryData(BaseModel):

@@ -8,7 +8,6 @@ from langchain_core.prompts import ChatPromptTemplate
 from src.filter.config import filter_config
 from src.filter.models import LLMFilterOutput, FilterOutput, FilterContext, FilterResult, FilterStageMetadata
 from src.filter.prompts import SYSTEM_PROMPT, USER_PROMPT
-from src.shared.prompts import CANONICAL_NAMING_RULE
 from src.shared.models import ContentType, TokenUsage
 from src.shared.pipeline_definitions import StageResult
 from src.utils.logging_utils import get_logger
@@ -37,7 +36,6 @@ class Filterer:
         self.chain = (
             {
                 "tracked_speaker_hints": lambda x: x["tracked_speaker_hints"],
-                "canonical_naming_rule": lambda _: CANONICAL_NAMING_RULE,
                 "title": lambda x: x["title"],
                 "content_preview": lambda x: x["content_preview"],
                 "content_types": lambda _: ", ".join(ct.value for ct in ContentType),
@@ -69,12 +67,8 @@ class Filterer:
         if token_usage.input_tokens or token_usage.output_tokens:
             logger.info(f"Filter token usage for {context.id}: {token_usage}")
         
-        # Compute matched_speakers (id -> display_name) and is_relevant
-        matched_speakers = {
-            context.display_name_to_id[s]: s
-            for s in llm_result.active_speakers
-            if s in context.display_name_to_id
-        }
+        tracked = set(context.tracked_speaker_hints)
+        matched_speakers = [s for s in llm_result.active_speakers if s in tracked]
         is_relevant = len(matched_speakers) > 0
         
         filter_data = FilterOutput(

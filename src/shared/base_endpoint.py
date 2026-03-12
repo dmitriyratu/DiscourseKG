@@ -4,10 +4,13 @@ Base endpoint class for consistent interface across all pipeline endpoints.
 Provides standardized execute method and common patterns for endpoint implementation.
 """
 
-from typing import Dict, Any, Optional
+from typing import Optional
 from abc import ABC, abstractmethod
+
 from src.utils.logging_utils import get_logger
-from src.shared.pipeline_definitions import EndpointResponse, PipelineStageStatus, PipelineState
+from src.shared.pipeline_definitions import (
+    EndpointResponse, PipelineStageStatus, PipelineStages, PipelineState, StageResult,
+)
 
 
 class BaseEndpoint(ABC):
@@ -19,24 +22,20 @@ class BaseEndpoint(ABC):
     
     @abstractmethod
     def execute(self, state: PipelineState) -> EndpointResponse:
-        """Execute the endpoint processing for a single item."""
         pass
     
-    def _create_success_response(
+    def _success(
         self,
-        result: Any,
-        stage: str,
-        input_data: Optional[Any] = None,
-        state_update: Optional[Dict[str, Any]] = None,
+        stage_result: StageResult,
+        stage: PipelineStages,
         pipeline_status: Optional[PipelineStageStatus] = None,
     ) -> EndpointResponse:
-        """Create standardized success response."""
+        """Create standardized success response from a stage result."""
         return EndpointResponse(
             success=True,
-            stage=stage,
-            output=result,
-            input_data=input_data,
-            state_update=state_update,
+            stage=stage.value,
+            output=stage_result.artifact,
+            state_update=stage_result.metadata,
             pipeline_status=pipeline_status,
         )
 
