@@ -11,7 +11,7 @@ load_dotenv()
 class FilterConfig(BaseModel):
     """Settings for filter stage LLM calls (model-agnostic)."""
     
-    LLM_MODEL: str = Field(default="gpt-4o-mini")
+    LLM_MODEL: str = Field(default="openai/gpt-4o-mini")
     LLM_TEMPERATURE: float = Field(default=0.0)
     LLM_TIMEOUT: float = Field(default=30.0)
     LLM_MAX_RETRIES: int = Field(default=2)

@@ -10,13 +10,12 @@ from urllib.parse import urlparse
 
 import trafilatura
 from bs4 import BeautifulSoup
-from langchain.chat_models import init_chat_model
-from langchain_core.messages import HumanMessage, SystemMessage
 
 from src.scrape.config import scraper_config
 from src.scrape.engine.prompts import build_extractor_prompts
 from src.scrape.engine.registry import get_domain_info
 from src.scrape.models import ExtractorScript
+from src.shared.llm import create_client
 from src.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -29,8 +28,7 @@ class ExtractorManager:
 
     def fetch_html(self, url: str) -> str:
         """Fetch raw HTML from URL via trafilatura."""
-        html = trafilatura.fetch_url(url)
-        return html
+        return trafilatura.fetch_url(url)
 
     def get_or_create_extractor(self, url: str) -> Callable[[str], str]:
         """Get cached extractor or generate a new one. Domain must be in registry."""
@@ -58,39 +56,38 @@ class ExtractorManager:
         return self._load_extractor(domain_info.extractor_name)
 
     def _load_extractor(self, extractor_name: str) -> Callable[[str], str]:
-        """Dynamically import and return the extract function from a domain module."""
         module = importlib.import_module(f"src.scrape.domains.{extractor_name}")
         return module.extract
 
     def _generate_extractor_code(self, url: str, instructions: str, html: str | None = None) -> str:
-        """Generate domain-specific extractor code using LLM analysis."""
         logger.info(f"Generating extractor for URL: {url}")
         html = html or self.fetch_html(url)
         html_sample = self._get_sample_html(html)
 
-        llm = init_chat_model(scraper_config.LLM_MODEL)
-        structured_llm = llm.with_structured_output(ExtractorScript)
+        client = create_client(scraper_config.LLM_MODEL)
         system, user_content = build_extractor_prompts(instructions, html_sample)
 
-        code = structured_llm.invoke([
-            SystemMessage(content=system),
-            HumanMessage(content=user_content),
-        ]).code
+        result = client.create(
+            response_model=ExtractorScript,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user_content},
+            ],
+        )
 
-        ast.parse(code)
+        ast.parse(result.code)
         logger.info("Extractor code generated and validated successfully")
-        return code
+        return result.code
 
     def _get_sample_html(self, html: str) -> str:
-        """Strip boilerplate tags and truncate to sample size."""
         soup = BeautifulSoup(html, "lxml")
         for tag in soup(["head", "script", "style", "nav", "footer"]):
             tag.decompose()
-        
+
         body_html = str(soup.body or soup)
         length = len(body_html)
         start_idx = int(0.25 * length)
-        end_idx = min(start_idx+scraper_config.HTML_SAMPLE_MAX_CHARS, int(0.75 * length))
+        end_idx = min(start_idx + scraper_config.HTML_SAMPLE_MAX_CHARS, int(0.75 * length))
         logger.info(f"Sample HTML length: {end_idx - start_idx} characters out of {length} characters")
 
         return body_html[start_idx:end_idx]

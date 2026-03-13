@@ -9,13 +9,11 @@ from src.extract.models import ExtractionResult
 
 
 class CategorizeEndpoint(BaseEndpoint):
-    """Endpoint for categorizing extracted entity data."""
 
     def __init__(self) -> None:
         super().__init__("CategorizeEndpoint")
 
     def execute(self, state: PipelineState) -> EndpointResponse:
-        """Execute the categorization process for a single item."""
         passages = self._load_passages(state)
 
         categorization_input = CategorizationInput(
@@ -27,18 +25,14 @@ class CategorizeEndpoint(BaseEndpoint):
         processing_context = CategorizeContext(
             id=state.id,
             categorization_input=categorization_input,
-            previous_error=state.error_message,
-            previous_failed_output=state.previous_failed_output,
         )
 
         stage_result = categorize_content(processing_context)
-
         categorization_result = CategorizationResult.model_validate(stage_result.artifact)
 
         self.logger.debug(
             f"Successfully categorized item {state.id} - {len(categorization_result.data.entities)} entities"
         )
-
         return self._success(stage_result, PipelineStages.CATEGORIZE)
 
     def _load_passages(self, state: PipelineState) -> list[dict]:

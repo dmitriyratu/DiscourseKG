@@ -1,29 +1,29 @@
 """Data models for categorization domain."""
 
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, List
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from src.shared.pipeline_definitions import StageOperationResult
 
 
 class TopicCategory(str, Enum):
     """Broad topic categories for categorizing communications across any domain"""
-    ECONOMICS = ("economics", "e.g., taxes, monetary policy, financial markets, cost of living")
-    TRADE = ("trade", "e.g., tariffs, trade deals, imports, exports, supply chains")
+    ECONOMICS = ("economics", "e.g., taxes, monetary policy, financial markets, cost of living, trade, tariffs, imports, exports")
     IMMIGRATION = ("immigration", "e.g., border security, deportation, asylum, refugees, enforcement")
     ELECTIONS = ("elections", "e.g., voting, election integrity, campaigns, ballot access, midterms")
-    TECHNOLOGY = ("technology", "e.g., AI, data privacy, tech competition, innovation")
+    TECHNOLOGY = ("technology", "e.g., AI, data privacy, tech competition, innovation, tech regulation")
     FOREIGN_AFFAIRS = ("foreign_affairs", "e.g., diplomacy, international agreements, global conflicts")
-    HEALTHCARE = ("healthcare", "e.g., health insurance, medical costs, public health")
-    ENERGY = ("energy", "e.g., renewable energy, fossil fuels, climate change")
+    HEALTHCARE = ("healthcare", "e.g., health insurance, medical costs, public health, healthcare regulation")
+    ENERGY_CLIMATE = ("energy_climate", "e.g., renewable energy, fossil fuels, climate change, environmental policy")
     DEFENSE = ("defense", "e.g., military spending, national security, military operations")
     SOCIAL = ("social", "e.g., education, welfare, social programs, inequality")
-    REGULATION = ("regulation", "e.g., oversight, regulations, compliance, standards")
+    GOVERNMENT = ("government", "e.g., federal budget, government size, bureaucracy, federal workforce, agency reform")
     LEGAL = ("legal", "e.g., court cases, lawsuits, indictments, DOJ, judicial decisions")
     MEDIA = ("media", "e.g., press coverage, specific outlets, journalists, fake news, censorship")
     PERSONNEL = ("personnel", "e.g., appointments, firings, resignations, confirmations, staffing")
+    SPORTS = ("sports", "e.g., teams, athletes, games, leagues, sports events")
     OTHER = ("other", "anything else")
     
     def __new__(cls, value, description):
@@ -35,12 +35,12 @@ class TopicCategory(str, Enum):
 
 class EntityType(str, Enum):
     """Type of entity mentioned in communications"""
-    ORGANIZATION = ("organization", "companies, institutions, government bodies")
-    LOCATION = ("location", "countries, regions, cities")
-    PERSON = ("person", "individuals, public figures")
-    PROGRAM = ("program", "initiatives, policies, projects, mechanisms")
-    PRODUCT = ("product", "products, services, tools, platforms")
-    EVENT = ("event", "conferences, summits, incidents, launches")
+    ORGANIZATION = ("organization", "companies, institutions, government bodies, sports teams, political parties, etc.")
+    LOCATION = ("location", "countries, regions, cities, named places, estates, etc.")
+    PERSON = ("person", "individuals, public figures, etc.")
+    PROGRAM = ("program", "initiatives, policies, projects, mechanisms, etc.")
+    PRODUCT = ("product", "products, services, tools, platforms, weapons systems, etc.")
+    EVENT = ("event", "conferences, summits, incidents, launches, etc.")
     OTHER = ("other", "anything else")
     
     def __new__(cls, value, description):
@@ -77,9 +77,17 @@ class ClaimLLM(BaseModel):
     @field_validator('claim_label')
     @classmethod
     def claim_label_words(cls, v: str) -> str:
-        n = len(v.split())
-        if n < 1 or n > 3:
+        if len(v.split()) > 3:
             raise ValueError(f"claim_label must be 1-3 words: '{v}'")
+        return v
+
+    @field_validator('speaker')
+    @classmethod
+    def validate_speaker(cls, v: str, info: ValidationInfo) -> str:
+        """Instructor passes context={'valid_speakers': [...]} — reject invalid speakers on retry."""
+        if info.context and (valid := info.context.get('valid_speakers')):
+            if v not in valid:
+                raise ValueError(f"Invalid speaker '{v}'; must be one of: {valid}")
         return v
 
 
@@ -96,8 +104,7 @@ class Claim(BaseModel):
     @field_validator('claim_label')
     @classmethod
     def claim_label_words(cls, v: str) -> str:
-        n = len(v.split())
-        if n < 1 or n > 3:
+        if len(v.split()) > 3:
             raise ValueError(f"claim_label must be 1-3 words: '{v}'")
         return v
 
@@ -129,8 +136,6 @@ class CategorizeContext(BaseModel):
     """Processing context for categorization operation."""
     id: str = Field(..., description="Unique identifier for the item")
     categorization_input: CategorizationInput = Field(..., description="Categorization input data")
-    previous_error: Optional[str] = Field(None, description="Previous error message if retrying")
-    previous_failed_output: Optional[str] = Field(None, description="Previous failed output if retrying")
 
 
 class CategorizationOutputLLM(BaseModel):

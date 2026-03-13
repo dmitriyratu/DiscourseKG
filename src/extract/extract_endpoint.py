@@ -8,13 +8,11 @@ from src.extract.models import ExtractContext
 
 
 class ExtractEndpoint(BaseEndpoint):
-    """Endpoint for extracting entities and passages from content."""
 
     def __init__(self) -> None:
         super().__init__("ExtractEndpoint")
 
     def execute(self, state: PipelineState) -> EndpointResponse:
-        """Execute entity extraction for a single item."""
         content = DataLoader.load_content_input(state, PipelineStages.SUMMARIZE, PipelineStages.SCRAPE)
 
         processing_context = ExtractContext(
@@ -22,8 +20,6 @@ class ExtractEndpoint(BaseEndpoint):
             content=content,
             content_type=state.content_type,
             matched_speakers=state.matched_speakers,
-            previous_error=state.error_message,
-            previous_failed_output=state.previous_failed_output,
         )
 
         stage_result = extract_entities(processing_context)

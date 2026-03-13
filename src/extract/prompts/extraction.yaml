@@ -41,7 +41,6 @@ entity_user_prompt: |
   ---
   CONTENT:
   {content}
-  {previous_error_text}
 
   ---
   Return only entities each tracked speaker genuinely discusses. Omit speakers with no qualifying entities.

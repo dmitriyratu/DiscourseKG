@@ -101,7 +101,6 @@ class PipelineState(BaseModel):
     latest_completed_stage: Optional[str] = Field(None, description="Latest successfully completed stage")
     next_stage: Optional[str] = Field(None, description="Next stage that needs to be processed")
     error_message: Optional[str] = Field(None, description="Error message if current stage failed")
-    previous_failed_output: Optional[str] = Field(None, description="Raw LLM output from previous failed attempt, for retry context")
     
     # Source (where did it come from?)
     source_url: Optional[str] = Field(None, description="Article URL (for scraping)")

@@ -1,6 +1,6 @@
 """Data models for extraction domain."""
 
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -42,8 +42,6 @@ class ExtractContext(BaseModel):
     content: str = Field(..., description="Full text to extract entities from")
     content_type: str = Field(default="unknown", description="Content type from filter stage (e.g. interview, speech)")
     matched_speakers: List[str] = Field(default_factory=list, description="Tracked speakers to extract passages for (from filter stage)")
-    previous_error: Optional[str] = Field(None, description="Previous error message if retrying")
-    previous_failed_output: Optional[str] = Field(None, description="Previous failed output if retrying")
 
 
 class ExtractStageMetadata(BaseModel):
