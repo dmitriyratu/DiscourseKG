@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 
 from src.categorize.models import CategorizationResult
 from src.filter.models import FilterStageMetadata
-from src.graph.models import AssembledGraphData, CommunicationData, GraphContext, SpeakerNode
+from src.graph.models import AssembledGraphData, CommunicationData, EntityInTopic, GraphContext, SpeakerNode, TopicGroup
 from src.shared.data_loaders import DataLoader
 from src.shared.models import ContentType
 from src.shared.pipeline_definitions import PipelineStages
@@ -28,13 +28,13 @@ class GraphDataAssembler:
         categorization_data = self._load_categorization(file_paths)
         communication_data = self._load_communication(file_paths, context)
         speakers_data = self._load_speakers(context.matched_speakers)
-        preprocessed_entities = self._preprocess_entities(categorization_data)
+        topics = self._build_topic_groups(communication_data.id, categorization_data)
 
         return AssembledGraphData(
             id=communication_data.id,
             speakers=speakers_data,
             communication=communication_data,
-            entities=preprocessed_entities,
+            topics=topics,
         )
 
     def _load_categorization(self, file_paths: Dict[str, str]) -> List[Dict[str, Any]]:
@@ -109,7 +109,6 @@ class GraphDataAssembler:
             results.append(SpeakerNode(
                 speaker_id=display_name,
                 name=display_name,
-                display_name=display_name,
                 role=speaker_obj.role,
                 organization=speaker_obj.organization,
                 industry=industry,
@@ -120,47 +119,39 @@ class GraphDataAssembler:
             raise ValueError(f"None of the matched speakers found in registry: {matched_speakers}")
         return results
 
-    def _preprocess_entities(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Preprocess entities for Neo4j loading."""
-        try:
-            entities = self._group_claims_by_topic(entities)
-            entities = self._validate_entities(entities)
-            return entities
-        except Exception as e:
-            logger.error(f"Entity preprocessing failed: {str(e)}")
-            raise
+    def _build_topic_groups(self, comm_id: str, entities: List[Dict[str, Any]]) -> List[TopicGroup]:
+        """Group entities and claims by (speaker, topic) — topic-first structure."""
+        topics_map: Dict[tuple, Dict] = {}
 
-    def _group_claims_by_topic(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Group flat claims by (speaker, topic) for Neo4j loading."""
-        result = []
         for entity in entities:
-            claims = entity["claims"]
-            if not claims:
-                continue
+            entity_name = entity["entity_name"]
+            entity_type = entity["entity_type"]
 
-            topics_map: Dict[tuple, List[Dict]] = {}
-            for claim in claims:
+            for claim in entity.get("claims", []):
                 key = (claim["speaker"], claim["topic"])
-                topics_map.setdefault(key, []).append(claim)
+                if key not in topics_map:
+                    speaker, topic = key
+                    topics_map[key] = {
+                        "topic_id": f"{comm_id}__{speaker}__{topic}",
+                        "topic": topic,
+                        "speaker": speaker,
+                        "topic_summary": claim["summary"][:500],
+                        "entities_map": {},
+                    }
+                entities_map = topics_map[key]["entities_map"]
+                if entity_name not in entities_map:
+                    entities_map[entity_name] = EntityInTopic(
+                        entity_name=entity_name,
+                        entity_type=entity_type,
+                        claims=[],
+                    )
+                entities_map[entity_name].claims.append(claim)
 
-            topics = []
-            for (speaker, topic), group_claims in topics_map.items():
-                topics.append({
-                    "speaker": speaker,
-                    "topic": topic,
-                    "topic_summary": group_claims[0]["summary"][:500],
-                    "claims": group_claims,
-                })
-            result.append({**entity, "topics": topics})
+        result = []
+        for topic_data in topics_map.values():
+            entities_list = list(topic_data.pop("entities_map").values())
+            result.append(TopicGroup(**topic_data, entities=entities_list))
+
+        if not result:
+            raise ValueError("No topics assembled — entities may have no claims")
         return result
-
-    def _validate_entities(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Validate entity data before Neo4j loading."""
-        for entity in entities:
-            if not entity.get("entity_name"):
-                raise ValueError(f"Entity missing entity_name: {entity}")
-            if not entity.get("entity_type"):
-                raise ValueError(f"Entity missing entity_type: {entity}")
-            if not entity.get("topics"):
-                raise ValueError(f"Entity has no topics: {entity['entity_name']}")
-        return entities

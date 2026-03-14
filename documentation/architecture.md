@@ -81,13 +81,13 @@ graph LR
 </tr>
 <tr style="background-color: #50E3C2; color: #000;">
 <td><strong>GraphDataAssembler</strong></td>
-<td>Loads and stitches data from scrape/filter/summarize/categorize stages; groups flat claims by (speaker, topic); validates entity structure</td>
-<td>Separates data preparation from Neo4j write logic</td>
+        <td>Loads and stitches data from scrape/filter/summarize/categorize stages; groups entities and claims into topic-first TopicGroup structures per (speaker, topic_category)</td>
+        <td>Separates data preparation from Neo4j write logic</td>
 </tr>
 <tr style="background-color: #50E3C2; color: #000;">
 <td><strong>Neo4jLoader</strong></td>
-<td>Handles all Neo4j write operations: constraints, Speaker/Communication/Entity/Topic/Claim nodes and relationships</td>
-<td>Isolates Neo4j-specific Cypher queries from data assembly logic</td>
+        <td>Handles all Neo4j write operations: constraints, Speaker/Communication/Topic/Entity/Claim nodes and relationships (topology: Communication→Topic→Entity→Claim)</td>
+        <td>Isolates Neo4j-specific Cypher queries from data assembly logic</td>
 </tr>
 <tr style="background-color: #F5A623; color: #000;">
 <td><strong>BaseEndpoint</strong></td>
@@ -389,63 +389,72 @@ Multi-level error handling for resilience:
 
 ## Knowledge Graph Topology
 
-The extract stage produces per-speaker entity passages, which the categorize stage transforms into structured `EntityMention` records with flat `Claim` lists. The graph stage uses `Grapher` (via `GraphDataAssembler`) to load data from multiple stages, stitch communication metadata, group flat claims into `(speaker, topic)` topic nodes, validate structure, and load into Neo4j. The resulting graph follows a hierarchical structure with 5 node types and 4 relationship types, enabling queries like "How does Trump discuss Bitcoin?" or "Show all entities with positive sentiment in Technology topics."
+The extract stage produces per-speaker entity passages, which the categorize stage transforms into structured `EntityMention` records with flat `Claim` lists. The graph stage uses `Grapher` (via `GraphDataAssembler`) to load data from multiple stages, stitch communication metadata, group entities and claims into topic-first `TopicGroup` structures, and load into Neo4j. The resulting graph follows a topic-centric hierarchy with 5 node types and 4 relationship types, enabling queries like "What entities does Trump discuss under technology?" or "What does Trump say about Apple across all topics?"
 
 **Node Types:**
 - **Speaker**: Influential figures with `speaker_id`, `display_name`, `role`, `organization`, `industry`, `region`
 - **Communication**: Speeches, interviews, debates with `title`, `content_type`, `content_date`, `source_url`, `full_text`, `word_count`, `was_summarized`, `compression_ratio`
-- **Entity**: Entities (`entity_name`, `entity_type`) mentioned across communications — types: organization, location, person, program, product, event, other
-- **Topic**: Entity references within a specific (speaker, topic) context with `topic`, `topic_summary`, `speaker` — topics: economics, immigration, elections, technology, foreign_affairs, healthcare, energy_climate, defense, social, government, legal, media, personnel, sports, other
-- **Claim**: Specific claims made about an entity (`claim_label`, `sentiment`, `summary`, `passages[]`) with sentiment: positive, negative, neutral, unclear
+- **Topic**: A finite topic category discussed by a speaker in a communication — `topic_id` (unique: `{comm_id}__{speaker}__{topic}`), `topic`, `topic_summary`, `speaker` — categories: economics, immigration, elections, technology, foreign_affairs, healthcare, energy_climate, defense, social, government, legal, media, personnel, sports, other
+- **Entity**: Global entities (`entity_name`, `entity_type`) merged across all communications — types: organization, location, person, program, product, event, other
+- **Claim**: Specific claims made about an entity (`claim_label`, `speaker`, `topic`, `sentiment`, `summary`, `passages[]`) with sentiment: positive, negative, neutral, unclear
 
 All nodes include a `name` property for zero-config visualization in Neo4j Browser and Bloom.
 
 ```mermaid
 graph TB
     subgraph "Level 1: Speaker & Communication"
-        S["<b>Speaker</b><br/>────────────────────<br/>name<br/>role<br/>industry<br/>region<br/>influence_score"]
+        S["<b>Speaker</b><br/>────────────────────<br/>name<br/>role<br/>industry<br/>region"]
         C["<b>Communication</b><br/>────────────────────<br/>name (title)<br/>id<br/>content_type<br/>content_date<br/>source_url<br/>full_text<br/>word_count<br/>was_summarized"]
     end
     
-    subgraph "Level 2: Entity & Topics"
-        E["<b>Entity</b><br/>────────────────────<br/>name (entity_name)<br/>entity_type"]
-        M1["<b>Topic</b><br/>────────────────────<br/>name (topic)<br/>topic_summary<br/>speaker"]
-        M2["<b>Topic</b><br/>────────────────────<br/>name (topic)<br/>topic_summary<br/>speaker"]
+    subgraph "Level 2: Topics (finite categories)"
+        T1["<b>Topic</b><br/>────────────────────<br/>name (topic)<br/>topic_id<br/>topic_summary<br/>speaker"]
+        T2["<b>Topic</b><br/>────────────────────<br/>name (topic)<br/>topic_id<br/>topic_summary<br/>speaker"]
     end
     
-    subgraph "Level 3: Claims"
-        SU1["<b>Claim</b><br/>────────────────────<br/>name (claim_label)<br/>subject_name (claim_label)<br/>sentiment<br/>summary<br/>passages[]"]
-        SU2["<b>Claim</b><br/>────────────────────<br/>name (claim_label)<br/>subject_name (claim_label)<br/>sentiment<br/>summary<br/>passages[]"]
-        SU3["<b>Claim</b><br/>────────────────────<br/>name (claim_label)<br/>subject_name (claim_label)<br/>sentiment<br/>summary<br/>passages[]"]
+    subgraph "Level 3: Entities (global, many per topic)"
+        E1["<b>Entity</b><br/>────────────────────<br/>name (entity_name)<br/>entity_type"]
+        E2["<b>Entity</b><br/>────────────────────<br/>name (entity_name)<br/>entity_type"]
+        E3["<b>Entity</b><br/>────────────────────<br/>name (entity_name)<br/>entity_type"]
+    end
+    
+    subgraph "Level 4: Claims"
+        CL1["<b>Claim</b><br/>────────────────────<br/>name (claim_label)<br/>speaker<br/>topic<br/>sentiment<br/>summary<br/>passages[]"]
+        CL2["<b>Claim</b><br/>────────────────────<br/>name (claim_label)<br/>speaker<br/>topic<br/>sentiment<br/>summary<br/>passages[]"]
+        CL3["<b>Claim</b><br/>────────────────────<br/>name (claim_label)<br/>speaker<br/>topic<br/>sentiment<br/>summary<br/>passages[]"]
     end
     
     S -->|DELIVERED| C
-    C -->|HAS_TOPIC| M1
-    C -->|HAS_TOPIC| M2
-    M1 -->|REFERS_TO| E
-    M2 -->|REFERS_TO| E
-    M1 -->|HAS_CLAIM| SU1
-    M1 -->|HAS_CLAIM| SU2
-    M2 -->|HAS_CLAIM| SU3
+    C -->|HAS_TOPIC| T1
+    C -->|HAS_TOPIC| T2
+    T1 -->|HAS_ENTITY| E1
+    T1 -->|HAS_ENTITY| E2
+    T2 -->|HAS_ENTITY| E2
+    T2 -->|HAS_ENTITY| E3
+    E1 -->|HAS_CLAIM| CL1
+    E2 -->|HAS_CLAIM| CL2
+    E3 -->|HAS_CLAIM| CL3
     
     style S fill:#2C3E50,color:#fff
     style C fill:#27AE60,color:#fff
-    style E fill:#F39C12,color:#fff
-    style M1 fill:#8E44AD,color:#fff
-    style M2 fill:#8E44AD,color:#fff
-    style SU1 fill:#E74C3C,color:#fff
-    style SU2 fill:#E74C3C,color:#fff
-    style SU3 fill:#E74C3C,color:#fff
+    style T1 fill:#8E44AD,color:#fff
+    style T2 fill:#8E44AD,color:#fff
+    style E1 fill:#F39C12,color:#fff
+    style E2 fill:#F39C12,color:#fff
+    style E3 fill:#F39C12,color:#fff
+    style CL1 fill:#E74C3C,color:#fff
+    style CL2 fill:#E74C3C,color:#fff
+    style CL3 fill:#E74C3C,color:#fff
 ```
 
 **Relationship Types:**
 
 - `DELIVERED`: Speaker → Communication (who delivered the communication)
-- `HAS_TOPIC`: Communication → Topic (entity discussed in a specific topic by a specific speaker)
-- `REFERS_TO`: Topic → Entity (which entity is referenced)
-- `HAS_CLAIM`: Topic → Claim (specific claims made about the entity in this topic)
+- `HAS_TOPIC`: Communication → Topic (a finite topic category discussed by a speaker)
+- `HAS_ENTITY`: Topic → Entity (which entities are discussed under this topic — multiple per topic)
+- `HAS_CLAIM`: Entity → Claim (specific claims about this entity, carrying speaker/topic context)
 
-Topic nodes are created per unique `(communication, entity, speaker, topic)` combination. Topic-level sentiment can be computed at query time by aggregating Claim sentiment via Cypher.
+Topic nodes are merged per unique `(communication, speaker, topic_category)` — one Topic node per category, containing multiple entities. Entity nodes are merged globally by `entity_name` and accumulate claims across all communications. Claims carry `speaker` and `topic` properties for scoped queries.
 
 ---
 

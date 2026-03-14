@@ -8,13 +8,12 @@ from src.shared.pipeline_definitions import StageOperationResult
 
 class SpeakerNode(BaseModel):
     """Speaker data for Neo4j node creation."""
-    speaker_id: str = Field(..., description="Speaker identifier (display name from matched_speakers)")
-    name: str = Field(..., description="Display name")
-    display_name: str = Field(..., description="Display name")
-    role: str = Field(default="", description="Speaker role")
-    organization: str = Field(default="", description="Organization")
-    industry: str = Field(default="", description="Industry")
-    region: str = Field(default="", description="Region")
+    speaker_id: str
+    name: str
+    role: str = ""
+    organization: str = ""
+    industry: str = ""
+    region: str = ""
 
 
 class CommunicationData(BaseModel):
@@ -30,12 +29,28 @@ class CommunicationData(BaseModel):
     compression_ratio: float = Field(default=1.0, description="Compression ratio if summarized")
 
 
+class EntityInTopic(BaseModel):
+    """Entity discussed within a topic context, with its claims."""
+    entity_name: str
+    entity_type: str
+    claims: List[Dict[str, Any]]
+
+
+class TopicGroup(BaseModel):
+    """A topic category discussed in a communication, grouping multiple entities."""
+    topic_id: str = Field(..., description="Unique ID: {comm_id}__{speaker}__{topic}")
+    topic: str
+    speaker: str
+    topic_summary: str
+    entities: List[EntityInTopic]
+
+
 class AssembledGraphData(BaseModel):
     """Assembled data ready for Neo4j loading."""
     id: str = Field(..., description="Communication ID")
     speakers: List[SpeakerNode] = Field(..., description="Speaker nodes to create")
     communication: CommunicationData = Field(..., description="Communication metadata")
-    entities: List[Dict[str, Any]] = Field(..., description="Preprocessed entities with topics and claims")
+    topics: List[TopicGroup] = Field(..., description="Topic groups each containing entities and claims")
 
 
 class GraphLoadStats(BaseModel):
