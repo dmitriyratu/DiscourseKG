@@ -11,7 +11,7 @@ from neo4j import GraphDatabase
 from src.graph.config import graph_config
 from src.graph.engine.data_assembler import GraphDataAssembler
 from src.graph.engine.neo4j_loader import Neo4jLoader
-from src.graph.models import GraphContext, GraphData, GraphResult
+from src.graph.models import GraphContext, GraphLoadStats, GraphResult
 from src.shared.pipeline_definitions import StageResult
 from src.utils.logging_utils import get_logger
 
@@ -55,20 +55,16 @@ class Grapher:
 
         return self._create_result(id, stats)
 
-    def _create_result(self, id: str, stats: GraphData) -> StageResult:
+    def _create_result(self, id: str, stats: GraphLoadStats) -> StageResult:
         """Create StageResult with separated artifact and metadata."""
-        graph_data = stats
         artifact = GraphResult(
             id=id,
             success=True,
-            data=graph_data,
+            data=stats,
             error_message=None,
         )
-        metadata = {}
-
         logger.debug(
-            f"Successfully loaded {id} to Neo4j: {graph_data.nodes_created} nodes, "
-            f"{graph_data.relationships_created} relationships"
+            f"Successfully loaded {id} to Neo4j: {stats.nodes_created} nodes, "
+            f"{stats.relationships_created} relationships"
         )
-
-        return StageResult(artifact=artifact.model_dump(mode='json'), metadata=metadata)
+        return StageResult(artifact=artifact.model_dump(mode='json'), metadata={})

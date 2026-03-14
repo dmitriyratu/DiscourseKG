@@ -18,7 +18,7 @@ class GraphEndpoint(BaseEndpoint):
         """Execute the Neo4j loading process for a single item."""
         processing_context = GraphContext(
             id=state.id,
-            stages=state.stages,
+            stage_outputs=state.stages,
             matched_speakers=state.matched_speakers,
             title=state.title,
             publication_date=state.publication_date,

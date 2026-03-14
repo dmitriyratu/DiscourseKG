@@ -1,10 +1,9 @@
 """Neo4j write operations for graph loading."""
 
-import json
 from typing import Any, Dict, List
 
 from src.graph.config import graph_config
-from src.graph.models import AssembledGraphData, GraphData
+from src.graph.models import AssembledGraphData, GraphLoadStats
 from src.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -16,7 +15,7 @@ class Neo4jLoader:
     def __init__(self, driver: Any) -> None:
         self.driver = driver
 
-    def load(self, data: AssembledGraphData) -> GraphData:
+    def load(self, data: AssembledGraphData) -> GraphLoadStats:
         """Load data into Neo4j and return statistics."""
         id = data.id
 
@@ -33,9 +32,9 @@ class Neo4jLoader:
             logger.error(f"Neo4j load failed for {id}: {e}")
             raise
 
-    def _load_data(self, session: Any, data: AssembledGraphData) -> GraphData:
+    def _load_data(self, session: Any, data: AssembledGraphData) -> GraphLoadStats:
         """Load all data into Neo4j and return statistics."""
-        stats = GraphData()
+        stats = GraphLoadStats()
 
         self._create_constraints(session)
 
@@ -45,7 +44,7 @@ class Neo4jLoader:
             stats.nodes_created += speaker_stats.nodes_created
 
             comm_stats = self._load_communication_node(
-                session, comm_dict, speaker.name_id
+                session, comm_dict, speaker.speaker_id
             )
             stats.nodes_created += comm_stats.nodes_created
             stats.relationships_created += comm_stats.relationships_created
@@ -58,16 +57,16 @@ class Neo4jLoader:
 
         return stats
 
-    def _create_stats(self, nodes: int = 0, relationships: int = 0) -> GraphData:
+    def _create_stats(self, nodes: int = 0, relationships: int = 0) -> GraphLoadStats:
         """Create stats for tracking Neo4j operations."""
-        return GraphData(nodes_created=nodes, relationships_created=relationships)
+        return GraphLoadStats(nodes_created=nodes, relationships_created=relationships)
 
     def _create_constraints(self, session: Any) -> None:
         """Create Neo4j constraints (idempotent)."""
         constraints = [
-            "CREATE CONSTRAINT speaker_name_id IF NOT EXISTS FOR (s:Speaker) REQUIRE s.name_id IS UNIQUE",
+            "CREATE CONSTRAINT speaker_id IF NOT EXISTS FOR (s:Speaker) REQUIRE s.speaker_id IS UNIQUE",
             "CREATE CONSTRAINT communication_id IF NOT EXISTS FOR (c:Communication) REQUIRE c.id IS UNIQUE",
-            "CREATE CONSTRAINT entity_name IF NOT EXISTS FOR (e:Entity) REQUIRE e.canonical_name IS UNIQUE",
+            "CREATE CONSTRAINT entity_name IF NOT EXISTS FOR (e:Entity) REQUIRE e.entity_name IS UNIQUE",
         ]
         for constraint in constraints:
             try:
@@ -75,10 +74,10 @@ class Neo4jLoader:
             except Exception as e:
                 logger.debug(f"Constraint already exists or error: {e}")
 
-    def _load_speaker_node(self, session: Any, speaker: Dict[str, Any]) -> GraphData:
+    def _load_speaker_node(self, session: Any, speaker: Dict[str, Any]) -> GraphLoadStats:
         """Load Speaker node."""
         query = """
-        MERGE (s:Speaker {name_id: $name_id})
+        MERGE (s:Speaker {speaker_id: $speaker_id})
         SET s.name = $name,
             s.display_name = $display_name,
             s.role = $role,
@@ -91,11 +90,11 @@ class Neo4jLoader:
         return self._create_stats(nodes=1 if result.single() else 0)
 
     def _load_communication_node(
-        self, session: Any, communication: Dict[str, Any], speaker_name_id: str
-    ) -> GraphData:
+        self, session: Any, communication: Dict[str, Any], speaker_id: str
+    ) -> GraphLoadStats:
         """Load Communication node and DELIVERED relationship."""
         query = """
-        MATCH (s:Speaker {name_id: $speaker_name_id})
+        MATCH (s:Speaker {speaker_id: $speaker_id})
         MERGE (c:Communication {id: $id})
         SET c.name = $title,
             c.title = $title,
@@ -109,14 +108,14 @@ class Neo4jLoader:
         MERGE (s)-[r:DELIVERED]->(c)
         RETURN c, r
         """
-        params = {**communication, "speaker_name_id": speaker_name_id}
+        params = {**communication, "speaker_id": speaker_id}
         result = session.run(query, **params)
         record = result.single()
         return self._create_stats(nodes=1 if record else 0, relationships=1 if record else 0)
 
     def _load_entities_and_topics(
         self, session: Any, comm_id: str, entities: List[Dict[str, Any]]
-    ) -> GraphData:
+    ) -> GraphLoadStats:
         """Load Entities, Topics, Claims and their relationships."""
         nodes_created = 0
         relationships_created = 0
@@ -134,10 +133,10 @@ class Neo4jLoader:
 
         return self._create_stats(nodes=nodes_created, relationships=relationships_created)
 
-    def _load_entity_node(self, session: Any, entity: Dict[str, Any]) -> GraphData:
+    def _load_entity_node(self, session: Any, entity: Dict[str, Any]) -> GraphLoadStats:
         """Load Entity node."""
         query = """
-        MERGE (e:Entity {canonical_name: $entity_name})
+        MERGE (e:Entity {entity_name: $entity_name})
         SET e.name = $entity_name,
             e.entity_type = $entity_type
         RETURN e
@@ -154,21 +153,20 @@ class Neo4jLoader:
         session: Any,
         comm_id: str,
         entity_name: str,
-        mention: Dict[str, Any],
-    ) -> GraphData:
+        topic_group: Dict[str, Any],
+    ) -> GraphLoadStats:
         """Load Topic node with Claims and create relationships."""
         
-        topic = mention["topic"]
-        speaker = mention["speaker"]
+        topic = topic_group["topic"]
+        speaker = topic_group["speaker"]
         topic_query = """
         MATCH (c:Communication {id: $comm_id})
-        MATCH (e:Entity {canonical_name: $entity_name})
+        MATCH (e:Entity {entity_name: $entity_name})
         CREATE (t:Topic {
             name: $topic,
             topic: $topic,
             speaker: $speaker,
-            context: $context,
-            aggregated_sentiment: $aggregated_sentiment
+            topic_summary: $topic_summary
         })
         CREATE (c)-[:HAS_TOPIC]->(t)
         CREATE (t)-[:REFERS_TO]->(e)
@@ -180,8 +178,7 @@ class Neo4jLoader:
             entity_name=entity_name,
             topic=topic,
             speaker=speaker,
-            context=mention["context"],
-            aggregated_sentiment=json.dumps(mention["aggregated_sentiment"]),
+            topic_summary=topic_group["topic_summary"],
         )
         topic_node = result.single()
         if not topic_node:
@@ -190,7 +187,7 @@ class Neo4jLoader:
         nodes_created = 1
         relationships_created = 2
 
-        for claim in mention["claims"]:
+        for claim in topic_group["claims"]:
             claim_stats = self._load_claim_node(
                 session, topic_node["t"].element_id, claim
             )
@@ -201,7 +198,7 @@ class Neo4jLoader:
 
     def _load_claim_node(
         self, session: Any, topic_id: str, claim: Dict[str, Any]
-    ) -> GraphData:
+    ) -> GraphLoadStats:
         """Load Claim node and HAS_CLAIM relationship."""
         query = """
         MATCH (t:Topic) WHERE elementId(t) = $topic_id

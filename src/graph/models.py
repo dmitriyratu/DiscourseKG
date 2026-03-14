@@ -8,7 +8,7 @@ from src.shared.pipeline_definitions import StageOperationResult
 
 class SpeakerNode(BaseModel):
     """Speaker data for Neo4j node creation."""
-    name_id: str = Field(..., description="Speaker display name from matched_speakers")
+    speaker_id: str = Field(..., description="Speaker identifier (display name from matched_speakers)")
     name: str = Field(..., description="Display name")
     display_name: str = Field(..., description="Display name")
     role: str = Field(default="", description="Speaker role")
@@ -35,16 +35,16 @@ class AssembledGraphData(BaseModel):
     id: str = Field(..., description="Communication ID")
     speakers: List[SpeakerNode] = Field(..., description="Speaker nodes to create")
     communication: CommunicationData = Field(..., description="Communication metadata")
-    entities: List[Dict[str, Any]] = Field(..., description="Preprocessed entities with aggregated sentiment")
+    entities: List[Dict[str, Any]] = Field(..., description="Preprocessed entities with topics and claims")
 
 
-class GraphData(BaseModel):
+class GraphLoadStats(BaseModel):
     """Graph loading statistics (nodes and relationships created in Neo4j)."""
     nodes_created: int = Field(default=0, description="Number of nodes created in Neo4j")
     relationships_created: int = Field(default=0, description="Number of relationships created in Neo4j")
 
 
-class GraphResult(StageOperationResult[GraphData]):
+class GraphResult(StageOperationResult[GraphLoadStats]):
     """Result of graph loading operation (artifact only, no metadata)."""
     pass
 
@@ -52,7 +52,7 @@ class GraphResult(StageOperationResult[GraphData]):
 class GraphContext(BaseModel):
     """Processing context for graph loading operation."""
     id: str = Field(..., description="Unique identifier for the item")
-    stages: Dict[str, Any] = Field(default_factory=dict, description="Per-stage metadata")
+    stage_outputs: Dict[str, Any] = Field(default_factory=dict, description="Per-stage metadata with file paths")
     matched_speakers: List[str] = Field(default_factory=list, description="Matched speakers (display names)")
     title: Optional[str] = Field(None, description="Article title")
     publication_date: Optional[str] = Field(None, description="Publication date (YYYY-MM-DD)")

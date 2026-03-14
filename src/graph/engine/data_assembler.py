@@ -1,12 +1,10 @@
 """Assembles graph data from pipeline stage outputs."""
 
 import json
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from src.categorize.models import CategorizationResult
 from src.filter.models import FilterStageMetadata
-from src.graph.config import graph_config
 from src.graph.models import AssembledGraphData, CommunicationData, GraphContext, SpeakerNode
 from src.shared.data_loaders import DataLoader
 from src.shared.models import ContentType
@@ -25,7 +23,7 @@ class GraphDataAssembler:
 
     def assemble(self, context: GraphContext) -> AssembledGraphData:
         """Load from all stages, preprocess, and return Neo4j-ready context."""
-        file_paths = {stage: meta.file_path for stage, meta in context.stages.items()}
+        file_paths = {stage: meta.file_path for stage, meta in context.stage_outputs.items()}
 
         categorization_data = self._load_categorization(file_paths)
         communication_data = self._load_communication(file_paths, context)
@@ -61,7 +59,7 @@ class GraphDataAssembler:
         title = context.title or "Unknown"
         content_date = context.publication_date or "Unknown"
 
-        filter_stage = context.stages.get(PipelineStages.FILTER.value)
+        filter_stage = context.stage_outputs.get(PipelineStages.FILTER.value)
         filter_metadata_dict = (filter_stage.metadata or {}) if filter_stage else {}
         if filter_metadata_dict:
             filter_metadata = FilterStageMetadata.model_validate(filter_metadata_dict)
@@ -109,7 +107,7 @@ class GraphDataAssembler:
             speaker_obj = registry.speakers[display_name]
             industry = getattr(speaker_obj.industry, "value", speaker_obj.industry)
             results.append(SpeakerNode(
-                name_id=display_name,
+                speaker_id=display_name,
                 name=display_name,
                 display_name=display_name,
                 role=speaker_obj.role,
@@ -125,15 +123,15 @@ class GraphDataAssembler:
     def _preprocess_entities(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Preprocess entities for Neo4j loading."""
         try:
-            entities = self._compute_aggregated_sentiment(entities)
+            entities = self._group_claims_by_topic(entities)
             entities = self._validate_entities(entities)
             return entities
         except Exception as e:
             logger.error(f"Entity preprocessing failed: {str(e)}")
             raise
 
-    def _compute_aggregated_sentiment(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Group flat claims by (speaker, topic) and compute aggregated sentiment for Neo4j."""
+    def _group_claims_by_topic(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Group flat claims by (speaker, topic) for Neo4j loading."""
         result = []
         for entity in entities:
             claims = entity["claims"]
@@ -147,22 +145,11 @@ class GraphDataAssembler:
 
             topics = []
             for (speaker, topic), group_claims in topics_map.items():
-                sentiment_counts = {}
-                for c in group_claims:
-                    sv = c["sentiment"]
-                    sentiment_counts[sv] = sentiment_counts.get(sv, 0) + 1
-                total = len(group_claims)
-                aggregated_sentiment = {
-                    s: {"count": cnt, "prop": round(cnt / total, graph_config.DECIMAL_PRECISION)}
-                    for s, cnt in sentiment_counts.items()
-                }
-                context = group_claims[0]["summary"][:500]
                 topics.append({
                     "speaker": speaker,
                     "topic": topic,
-                    "context": context,
+                    "topic_summary": group_claims[0]["summary"][:500],
                     "claims": group_claims,
-                    "aggregated_sentiment": aggregated_sentiment,
                 })
             result.append({**entity, "topics": topics})
         return result

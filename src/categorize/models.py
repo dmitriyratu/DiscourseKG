@@ -145,9 +145,9 @@ class CategorizationOutputLLM(BaseModel):
     @field_validator('entities')
     @classmethod
     def unique_entities(cls, entities: List[EntityMentionLLM]) -> List[EntityMentionLLM]:
-        entity_names = [e.entity_name.lower() for e in entities]
-        if len(entity_names) != len(set(entity_names)):
-            duplicates = {n for n in entity_names if entity_names.count(n) > 1}
+        names = [e.entity_name.lower() for e in entities]
+        if len(names) != len(set(names)):
+            duplicates = {n for n in names if names.count(n) > 1}
             raise ValueError(f"Duplicate entity names: {duplicates}")
         return entities
 
@@ -159,9 +159,9 @@ class CategorizationOutput(BaseModel):
     @field_validator('entities')
     @classmethod
     def unique_entities(cls, entities: List[EntityMention]) -> List[EntityMention]:
-        entity_names = [e.entity_name.lower() for e in entities]
-        if len(entity_names) != len(set(entity_names)):
-            duplicates = {n for n in entity_names if entity_names.count(n) > 1}
+        names = [e.entity_name.lower() for e in entities]
+        if len(names) != len(set(names)):
+            duplicates = {n for n in names if names.count(n) > 1}
             raise ValueError(f"Duplicate entity names: {duplicates}")
         return entities
 
