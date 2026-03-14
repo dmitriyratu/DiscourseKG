@@ -6,7 +6,7 @@ from src.shared.models import TokenUsage
 
 
 def create_client(model: str, api_key: str = None, **kwargs):
-    """Create an instructor client from a provider/model string (e.g. 'openai/gpt-4o-mini')."""
+    """Create an instructor client from a provider/model string (e.g. 'openai/gpt-5-mini')."""
     params = {**kwargs}
     if api_key:
         params["api_key"] = api_key

@@ -11,7 +11,7 @@ from pydantic import Field, create_model
 
 from src.extract.config import extraction_config
 from src.extract.models import (
-    ExtractionOutput, ExtractionResult, ExtractContext,
+    EntityWhitelist, ExtractionOutput, ExtractionResult, ExtractionStats, ExtractContext,
     ExtractStageMetadata, Passage, SpeakerEntityMap,
 )
 from src.extract.prompts import (
@@ -47,11 +47,11 @@ class Extractor:
         )
 
     @staticmethod
-    def _passage_schema(entity_whitelist: Dict[str, List[str]]) -> type | None:
+    def _passage_schema(entity_whitelist: EntityWhitelist) -> type | None:
         """Dynamic Pydantic schema for Phase 2: speaker enum + unified entity enum → passages."""
         all_speakers = list(entity_whitelist.keys())
         all_entities = list(dict.fromkeys(
-            e.strip() for entities in entity_whitelist.values() for e in entities if e.strip()
+            e for entities in entity_whitelist.values() for e in entities
         ))
         if not all_speakers or not all_entities:
             return None
@@ -68,7 +68,7 @@ class Extractor:
         return create_model("PassageOutput", speakers=(List[speaker_model], Field(...)))
 
     @staticmethod
-    def _format_speaker_entity_list(entity_whitelist: Dict[str, List[str]]) -> str:
+    def _format_speaker_entity_list(entity_whitelist: EntityWhitelist) -> str:
         return "\n".join(
             f"  {speaker}:\n" + "\n".join(f"    - {e}" for e in entities)
             for speaker, entities in entity_whitelist.items()
@@ -94,13 +94,14 @@ class Extractor:
         logger.info(f"Phase 1 complete — {total_entities} entities across {len(entity_whitelist)} speakers for {context.id}")
 
         if not entity_whitelist:
-            return self._create_result(context.id, ExtractionOutput(), total_usage)
+            return self._create_result(context.id, ExtractionOutput(
+                stats=ExtractionStats(entities_attributed=0, entities_extracted=0, passages_by_speaker={})
+            ), total_usage)
 
         # Phase 2: parallel passage extraction per chunk
-        no_chunk_threshold = int(1.5 * extraction_config.CHUNK_SIZE)
         chunks = (
             [context.content]
-            if len(context.content) < no_chunk_threshold
+            if len(context.content) < extraction_config.NO_CHUNK_THRESHOLD
             else self.splitter.split_text(context.content)
         )
         logger.info(f"Phase 2 starting for {context.id} ({len(chunks)} chunks, {len(context.content)} chars)")
@@ -110,28 +111,37 @@ class Extractor:
         total_usage.output_tokens += chunk_usage.output_tokens
 
         by_speaker = self._merge(chunk_results, entity_whitelist)
-        total_passages = sum(len(p) for entities in by_speaker.values() for p in entities.values())
-        total_entities = sum(len(entities) for entities in by_speaker.values())
-        logger.info(f"Phase 2 complete — {total_entities} entities, {total_passages} passages for {context.id}")
+        entities_attributed = sum(len(v) for v in entity_whitelist.values())
+        entities_extracted = sum(len(entities) for entities in by_speaker.values())
+        passages_by_speaker = {s: sum(len(p) for p in e.values()) for s, e in by_speaker.items()}
+        total_passages = sum(passages_by_speaker.values())
+        logger.info(f"Phase 2 complete — {entities_extracted} entities, {total_passages} passages for {context.id}")
 
-        output = ExtractionOutput(by_speaker=by_speaker, entity_whitelist=entity_whitelist)
+        output = ExtractionOutput(
+            by_speaker=by_speaker,
+            entity_whitelist=entity_whitelist,
+            stats=ExtractionStats(
+                entities_attributed=entities_attributed,
+                entities_extracted=entities_extracted,
+                passages_by_speaker=passages_by_speaker,
+            ),
+        )
         return self._create_result(context.id, output, total_usage)
 
     def _extract_entity_whitelist(
         self, content: str, matched_speakers_str: str, content_type: str,
-    ) -> tuple[Dict[str, List[str]], TokenUsage]:
+    ) -> tuple[EntityWhitelist, TokenUsage]:
         system = ENTITY_SYSTEM_PROMPT.format(content_type=content_type, matched_speakers=matched_speakers_str)
         user = ENTITY_USER_PROMPT.format(matched_speakers=matched_speakers_str, content=content)
 
         parsed, completion = self.client_phase1.create_with_completion(
             response_model=SpeakerEntityMap,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-            temperature=extraction_config.LLM_TEMPERATURE,
-            max_tokens=extraction_config.LLM_MAX_OUTPUT_TOKENS,
+            max_completion_tokens=extraction_config.LLM_MAX_OUTPUT_TOKENS_PHASE1,
         )
 
         return {
-            s.speaker: list(dict.fromkeys(e.strip() for e in s.entities if e.strip()))
+            s.speaker: {e.name.strip(): e.reason for e in s.entities if e.name.strip()}
             for s in parsed.speakers if s.entities
         }, extract_usage(completion)
 
@@ -143,8 +153,7 @@ class Extractor:
         result, completion = self.client.create_with_completion(
             response_model=schema,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-            temperature=extraction_config.LLM_TEMPERATURE,
-            max_tokens=extraction_config.LLM_MAX_OUTPUT_TOKENS,
+            max_completion_tokens=extraction_config.LLM_MAX_OUTPUT_TOKENS_PHASE2,
         )
         parsed = {
             speaker_obj.speaker_name.value: {
@@ -156,7 +165,7 @@ class Extractor:
         return parsed, extract_usage(completion)
 
     def _extract_passages_parallel(
-        self, chunks: List[str], entity_whitelist: Dict[str, List[str]], content_type: str,
+        self, chunks: List[str], entity_whitelist: EntityWhitelist, content_type: str,
     ) -> tuple[list[dict], TokenUsage]:
         schema = self._passage_schema(entity_whitelist)
         if schema is None:
@@ -181,7 +190,7 @@ class Extractor:
         return parsed, total_usage
 
     def _merge(
-        self, chunk_results: list[dict], entity_whitelist: Dict[str, List[str]],
+        self, chunk_results: list[dict], entity_whitelist: EntityWhitelist,
     ) -> Dict[str, Dict[str, List[Passage]]]:
         """Merge chunk results: group by (speaker, entity), fuzzy-dedup on verbatim."""
         by_speaker: dict[str, dict[str, list[Passage]]] = defaultdict(lambda: defaultdict(list))

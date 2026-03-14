@@ -40,7 +40,6 @@ class Filterer:
         llm_result, completion = self.client.create_with_completion(
             response_model=LLMFilterOutput,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-            temperature=filter_config.LLM_TEMPERATURE,
         )
 
         usage = extract_usage(completion)

@@ -70,8 +70,7 @@ class Categorizer:
                 {"role": "user", "content": user},
             ],
             context={"valid_speakers": cat_input.matched_speakers},
-            temperature=categorization_config.LLM_TEMPERATURE,
-            max_tokens=categorization_config.LLM_MAX_OUTPUT_TOKENS,
+            max_completion_tokens=categorization_config.LLM_MAX_OUTPUT_TOKENS,
         )
 
         usage = extract_usage(completion)

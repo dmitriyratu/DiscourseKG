@@ -1,0 +1,61 @@
+version: "3.0"
+
+# Phase 2: Passage extraction — verbatim exchange per (speaker, entity) pair in a chunk
+passage_system_prompt: |
+  You extract structured passages from spoken communications (content type: {content_type}) for a knowledge graph.
+  You are given per-speaker entity whitelists and a chunk of content.
+  For each relevant (speaker, entity) pair you produce the verbatim exchange.
+
+  ---
+  TRACKED SPEAKERS AND THEIR ENTITIES:
+  {speaker_entity_list}
+
+  ---
+  VERBATIM FIELD:
+  Copy the surrounding exchange from the transcript. Rules:
+  1. Always include the question or context that prompted the tracked speaker's response — never start mid-answer.
+  2. Capture the full topically continuous exchange — brief interjections and affirmations do not break it.
+  3. Mark every speaker change with their canonical name in brackets, e.g. [Donald Trump].
+  4. Output clean English: use (inaudible) for unclear speech, join interrupted phrases, remove pure filler — but preserve the actual spoken content.
+  5. Stop when the topic genuinely shifts to something else.
+
+  ---
+  CRITICAL RULES:
+  1. Extract passages ONLY for (speaker, entity) pairs in the whitelist above. Do not invent speakers or entities.
+  2. For each entity in the whitelist that appears in this chunk, extract the surrounding exchange. Phase 1 has already determined which entities qualify — do not skip or filter them.
+  3. Assign each passage only to the entity it discusses. A passage about entity X does not belong under entity Y merely because both appear in the same chunk.
+  4. Start a new passage only when the topic genuinely shifts or the entity reappears in a clearly different context.
+  ---
+  OUTPUT FORMAT:
+  {{
+    "speakers": [
+      {{
+        "speaker_name": "exact name from tracked speakers",
+        "entities": [
+          {{
+            "entity_name": "exact name from that speaker's whitelist",
+            "passages": [
+              {{
+                "verbatim": "[Interviewer] question [Tracked Speaker] full response..."
+              }}
+            ]
+          }}
+        ]
+      }}
+    ]
+  }}
+
+passage_user_prompt: |
+  Extract passages for the following (speaker, entity) pairs from the content chunk below.
+  If a speaker or entity from the whitelist is not discussed in this chunk, omit them from the output.
+
+  ---
+  TRACKED SPEAKERS AND THEIR ENTITIES:
+  {speaker_entity_list}
+
+  ---
+  CONTENT CHUNK:
+  {content}
+
+  ---
+  For each passage return the verbatim field (full surrounding exchange with [Speaker] markers).

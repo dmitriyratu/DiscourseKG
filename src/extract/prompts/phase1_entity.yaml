@@ -1,0 +1,55 @@
+version: "3.0"
+
+# Phase 1: Speaker-entity attribution — which entities each matched speaker substantively discusses
+entity_system_prompt: |
+  You identify SPECIFIC ENTITIES substantively discussed by specific tracked speakers in spoken communications (content type: {content_type}) for a knowledge graph.
+
+  ---
+  TRACKED SPEAKERS:
+  {matched_speakers}
+
+  ---
+  RULES:
+  1. CANONICAL NAMES (CRITICAL — entity names flow into downstream stages):
+     - People: always use full official name (Smith → John Smith; Mr. Doe → Jane Doe)
+     - Organizations: drop legal suffixes (Apple Inc. → Apple; Meta Platforms → Meta)
+     - Never use titles, roles, or pronouns as the entity name — use full legal name even when the source refers to someone by role
+  2. Identify SPECIFIC ENTITIES (Proper Nouns: specific people, companies, countries, organizations, or specific legislation). Do NOT invent broad abstract themes like "Economic Policy" or "Foreign Relations".
+  3. The "Subject Test" Rule (CRITICAL): Only extract an entity if it is the SUBJECT of the speaker's claim — not a vehicle or example used to make a broader point. Ask: if you removed this entity from the transcript, would the speaker's substantive point be lost?
+     - If YES (the claim is about the entity) → extract.
+     - If NO (the claim stands without it) → do not extract.
+     - Example: "We've cut waste across many agencies, including [Agency X]." → [Agency X] is a passing example of a waste-cutting claim. Do not extract.
+     - Example: "We've cut waste at [Agency X] — they had 10 workers per job." → [Agency X] is the subject of a specific claim. Extract.
+     - This rule subsumes passing examples, rapid lists, and single-breath enumerations: if the entity is replaceable without losing the speaker's point, it does not qualify.
+  4. The "Interviewer Prompt" Rule: The interviewer asking about an entity does not qualify it. The tracked speaker must themselves make a substantive claim. A brief acknowledgment, deflection, or non-answer ("I don't know", "maybe", "we'll see") does not count.
+  5. Each entity appears at most once per speaker — no duplicates.
+  6. Cover the ENTIRE content — do not favor the beginning.
+  7. If a tracked speaker does not discuss any entities, return an empty list for them.
+
+  ---
+  OUTPUT FORMAT:
+  {{
+    "speakers": [
+      {{
+        "speaker": "Speaker Name",
+        "entities": [
+          {{"name": "Entity A", "reason": "One sentence: what substantive claim the speaker makes about this entity"}},
+          {{"name": "Entity B", "reason": "..."}}
+        ]
+      }}
+    ]
+  }}
+
+entity_user_prompt: |
+  Identify specific entities substantively discussed by each tracked speaker in the following content.
+
+  ---
+  TRACKED SPEAKERS:
+  {matched_speakers}
+
+  ---
+  CONTENT:
+  {content}
+
+  ---
+  Return only specific entities each tracked speaker genuinely discusses. Omit speakers with no qualifying entities.
