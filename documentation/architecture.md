@@ -117,7 +117,7 @@ graph LR
 </table>
 
 ```mermaid
-graph LR
+graph TB
     subgraph ORCH_LAYER["Orchestration Layer"]
         PF["<b>Prefect Flows</b><br/>────────────────────<br/>discover_flow.py<br/>scrape_flow.py<br/>filter_flow.py<br/>summarize_flow.py<br/>extract_flow.py<br/>categorize_flow.py<br/>graph_flow.py"]
         FP["<b>FlowProcessor</b><br/>────────────────────<br/>flow_processor.py<br/>process_items()"]
@@ -233,7 +233,7 @@ The `PipelineStateManager` tracks each item's progress in a SQLite database at `
 Flows query the state manager via `get_items(stage)` to find items ready for processing, then use `FlowProcessor.process_items()` to iterate through items with automatic timing, persistence, and state updates. The Filter stage can terminate pipeline processing early with `FILTERED` status for items where no tracked speaker is an active contributor.
 
 ```mermaid
-graph LR
+graph TB
     subgraph INPUT["Input"]
         PARAMS["<b>Input Parameters</b><br/>────────────────────<br/>speaker: speaker name<br/>start_date: date range start<br/>end_date: date range end"]
     end
