@@ -2,7 +2,7 @@ version: "3.0"
 
 # Phase 1: Speaker-entity attribution — which entities each matched speaker substantively discusses
 entity_system_prompt: |
-  You identify entities substantively discussed by specific tracked speakers in spoken communications (content type: {content_type}) for a knowledge graph.
+  You identify SPECIFIC ENTITIES substantively discussed by specific tracked speakers in spoken communications (content type: {content_type}) for a knowledge graph.
 
   ---
   TRACKED SPEAKERS:
@@ -10,15 +10,19 @@ entity_system_prompt: |
 
   ---
   RULES:
-  1. For each tracked speaker, list only entities they substantively discuss: at least one direct claim, opinion, or stance (not just a passing mention or name-drop).
-  2. Only include entities the tracked speaker themselves discusses — not entities merely mentioned by other participants.
-  3. Exclude entities where the tracked speaker only asks a question without adding substance.
-  4. Canonical names:
-     - People: use full name (Smith → John Smith; President Xi → Xi Jinping)
-     - Organizations: drop legal suffixes (Apple Inc. → Apple)
-  5. Each entity appears at most once per speaker — no duplicates.
-  6. Cover the ENTIRE content — do not favor the beginning.
-  7. If a tracked speaker does not discuss any entities, return an empty list for them.
+  1. CANONICAL NAMES (CRITICAL — entity names flow into downstream stages):
+     - People: always use full official name (Smith → John Smith; Mr. Doe → Jane Doe)
+     - Organizations: drop legal suffixes (Apple Inc. → Apple; Meta Platforms → Meta)
+     - Never use titles, roles, or pronouns as the entity name — use full legal name even when the source refers to someone by role
+  2. Identify SPECIFIC ENTITIES (Proper Nouns: specific people, companies, countries, organizations, or specific legislation). Do NOT invent broad abstract themes like "Economic Policy" or "Foreign Relations".
+  3. The "Substantive Claim" Rule: You must ONLY extract an entity if the speaker makes a direct, substantive claim, opinion, or stance ABOUT THAT SPECIFIC ENTITY.
+  4. The "Passing Example" Rule (CRITICAL): If an entity is just mentioned as a passing example to make a broader point, DO NOT extract it. 
+     - Example: "Prices are down. Gasoline is $1.85. Beef is coming down." -> DO NOT extract Gasoline or Beef. The speaker is not making a claim about the beef industry; they are making a claim about inflation.
+     - Example: "Look at the corrupt elections in Detroit and Atlanta." -> DO NOT extract Detroit or Atlanta. The speaker is not making a claim about city management; they are making a claim about election fraud.
+  5. The "List" Rule: If a speaker lists 3 or 4 entities in a single breath, they are usually passing examples. Ignore them unless the speaker stops to make a specific claim about one of them.
+  6. Each entity appears at most once per speaker — no duplicates.
+  7. Cover the ENTIRE content — do not favor the beginning.
+  8. If a tracked speaker does not discuss any entities, return an empty list for them.
 
   ---
   OUTPUT FORMAT:
@@ -32,7 +36,7 @@ entity_system_prompt: |
   }}
 
 entity_user_prompt: |
-  Identify entities substantively discussed by each tracked speaker in the following content.
+  Identify specific entities substantively discussed by each tracked speaker in the following content.
 
   ---
   TRACKED SPEAKERS:
@@ -43,7 +47,7 @@ entity_user_prompt: |
   {content}
 
   ---
-  Return only entities each tracked speaker genuinely discusses. Omit speakers with no qualifying entities.
+  Return only specific entities each tracked speaker genuinely discusses. Omit speakers with no qualifying entities.
 
 # Phase 2: Passage extraction — verbatim exchange per (speaker, entity) pair in a chunk
 passage_system_prompt: |
@@ -67,8 +71,8 @@ passage_system_prompt: |
   ---
   CRITICAL RULES:
   1. Extract passages ONLY for (speaker, entity) pairs in the whitelist above. Do not invent speakers or entities.
-  2. Only extract passages where the tracked speaker makes a substantive claim, opinion, or stance about the entity. Skip bare mentions.
-  3. Assign each passage only to the entity it substantively discusses. A passage about topic X does not belong under entity Y merely because both appear in the same chunk.
+  2. For each entity in the whitelist that appears in this chunk, extract the surrounding exchange. Phase 1 has already determined which entities qualify — do not skip or filter them.
+  3. Assign each passage only to the entity it discusses. A passage about entity X does not belong under entity Y merely because both appear in the same chunk.
   4. Start a new passage only when the topic genuinely shifts or the entity reappears in a clearly different context.
   ---
   OUTPUT FORMAT:

@@ -33,7 +33,11 @@ class Extractor:
 
     def __init__(self) -> None:
         self.client = create_client(
-            extraction_config.LLM_MODEL,
+            extraction_config.LLM_MODEL_PHASE2,
+            api_key=extraction_config.LLM_API_KEY,
+        )
+        self.client_phase1 = create_client(
+            extraction_config.LLM_MODEL_PHASE1,
             api_key=extraction_config.LLM_API_KEY,
         )
         self.splitter = RecursiveCharacterTextSplitter(
@@ -107,7 +111,8 @@ class Extractor:
 
         by_speaker = self._merge(chunk_results, entity_whitelist)
         total_passages = sum(len(p) for entities in by_speaker.values() for p in entities.values())
-        logger.info(f"Phase 2 complete — {total_passages} passages across {len(by_speaker)} speakers for {context.id}")
+        total_entities = sum(len(entities) for entities in by_speaker.values())
+        logger.info(f"Phase 2 complete — {total_entities} entities, {total_passages} passages for {context.id}")
 
         output = ExtractionOutput(by_speaker=by_speaker, entity_whitelist=entity_whitelist)
         return self._create_result(context.id, output, total_usage)
@@ -118,12 +123,13 @@ class Extractor:
         system = ENTITY_SYSTEM_PROMPT.format(content_type=content_type, matched_speakers=matched_speakers_str)
         user = ENTITY_USER_PROMPT.format(matched_speakers=matched_speakers_str, content=content)
 
-        parsed, completion = self.client.create_with_completion(
+        parsed, completion = self.client_phase1.create_with_completion(
             response_model=SpeakerEntityMap,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
             temperature=extraction_config.LLM_TEMPERATURE,
             max_tokens=extraction_config.LLM_MAX_OUTPUT_TOKENS,
         )
+
         return {
             s.speaker: list(dict.fromkeys(e.strip() for e in s.entities if e.strip()))
             for s in parsed.speakers if s.entities
@@ -209,7 +215,7 @@ class Extractor:
     def _create_result(self, id: str, data: ExtractionOutput, token_usage: TokenUsage) -> StageResult:
         artifact = ExtractionResult(id=id, success=True, data=data, error_message=None)
         metadata = ExtractStageMetadata(
-            model_used=extraction_config.LLM_MODEL,
+            model_used=f"{extraction_config.LLM_MODEL_PHASE1} (P1), {extraction_config.LLM_MODEL_PHASE2} (P2)",
             input_tokens=token_usage.input_tokens, output_tokens=token_usage.output_tokens,
         ).model_dump()
         return StageResult(artifact=artifact.model_dump(mode='json'), metadata=metadata)

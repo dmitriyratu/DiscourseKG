@@ -3,7 +3,7 @@
 import json
 from typing import Any, Dict, List
 
-from src.categorize.models import CategorizationResult
+from src.categorize.models import CategorizationOutput, CategorizationResult
 from src.filter.models import FilterStageMetadata
 from src.graph.models import AssembledGraphData, CommunicationData, EntityInTopic, GraphContext, SpeakerNode, TopicGroup
 from src.shared.data_loaders import DataLoader
@@ -25,10 +25,10 @@ class GraphDataAssembler:
         """Load from all stages, preprocess, and return Neo4j-ready context."""
         file_paths = {stage: meta.file_path for stage, meta in context.stage_outputs.items()}
 
-        categorization_data = self._load_categorization(file_paths)
+        categorization = self._load_categorization(file_paths)
         communication_data = self._load_communication(file_paths, context)
         speakers_data = self._load_speakers(context.matched_speakers)
-        topics = self._build_topic_groups(communication_data.id, categorization_data)
+        topics = self._build_topic_groups(communication_data.id, categorization)
 
         return AssembledGraphData(
             id=communication_data.id,
@@ -37,14 +37,10 @@ class GraphDataAssembler:
             topics=topics,
         )
 
-    def _load_categorization(self, file_paths: Dict[str, str]) -> List[Dict[str, Any]]:
-        """Load categorization data (entities)."""
+    def _load_categorization(self, file_paths: Dict[str, str]) -> CategorizationResult:
+        """Load categorization stage output."""
         categorize_path = file_paths.get(PipelineStages.CATEGORIZE.value)
-        output = DataLoader.load(categorize_path)
-        categorization_result = CategorizationResult.model_validate(output)
-        if not categorization_result.data:
-            return []
-        return [e.model_dump(mode='json') for e in categorization_result.data.entities]
+        return CategorizationResult.model_validate(DataLoader.load(categorize_path))
 
     def _load_communication(
         self, file_paths: Dict[str, str], context: GraphContext
@@ -72,12 +68,10 @@ class GraphDataAssembler:
         compression_ratio = 1.0
 
         if summarize_path:
-            summarize_output = DataLoader.load(summarize_path)
-            summarization_result = SummarizationResult.model_validate(summarize_output)
+            summarization_result = SummarizationResult.model_validate(DataLoader.load(summarize_path))
             if summarization_result.data:
-                compression_of_original = summarization_result.data.compression_of_original
-                compression_ratio = compression_of_original
-                was_summarized = compression_of_original < 1.0
+                compression_ratio = summarization_result.data.compression_of_original
+                was_summarized = compression_ratio < 1.0
 
         return CommunicationData(
             id=scraping_result.id,
@@ -119,14 +113,16 @@ class GraphDataAssembler:
             raise ValueError(f"None of the matched speakers found in registry: {matched_speakers}")
         return results
 
-    def _build_topic_groups(self, comm_id: str, entities: List[Dict[str, Any]]) -> List[TopicGroup]:
+    def _build_topic_groups(self, comm_id: str, categorization: CategorizationResult) -> List[TopicGroup]:
         """Group entities and claims by (speaker, topic) — topic-first structure."""
-        topics_map: Dict[tuple, Dict] = {}
+        cat = categorization.data or CategorizationOutput(entities=[])
+        entities = [e.model_dump(mode='json') for e in cat.entities]
+        summary_lookup = {(ts.speaker, ts.topic): ts.summary for ts in cat.topics}
 
+        topics_map: Dict[tuple, Dict] = {}
         for entity in entities:
             entity_name = entity["entity_name"]
             entity_type = entity["entity_type"]
-
             for claim in entity.get("claims", []):
                 key = (claim["speaker"], claim["topic"])
                 if key not in topics_map:
@@ -135,23 +131,20 @@ class GraphDataAssembler:
                         "topic_id": f"{comm_id}__{speaker}__{topic}",
                         "topic": topic,
                         "speaker": speaker,
-                        "topic_summary": claim["summary"][:500],
+                        "topic_summary": summary_lookup.get(key, claim["summary"][:500]),
                         "entities_map": {},
                     }
                 entities_map = topics_map[key]["entities_map"]
                 if entity_name not in entities_map:
                     entities_map[entity_name] = EntityInTopic(
-                        entity_name=entity_name,
-                        entity_type=entity_type,
-                        claims=[],
+                        entity_name=entity_name, entity_type=entity_type, claims=[],
                     )
                 entities_map[entity_name].claims.append(claim)
 
-        result = []
-        for topic_data in topics_map.values():
-            entities_list = list(topic_data.pop("entities_map").values())
-            result.append(TopicGroup(**topic_data, entities=entities_list))
-
+        result = [
+            TopicGroup(**{**data, "entities": list(data.pop("entities_map").values())})
+            for data in topics_map.values()
+        ]
         if not result:
             raise ValueError("No topics assembled — entities may have no claims")
         return result

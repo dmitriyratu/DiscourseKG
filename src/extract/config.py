@@ -12,7 +12,8 @@ load_dotenv()
 class ExtractionConfig(BaseModel):
     """Settings for extraction stage LLM calls."""
 
-    LLM_MODEL: str = Field(default="openai/gpt-4o-mini")
+    LLM_MODEL_PHASE1: str = Field(default="openai/gpt-4o", description="Model for entity attribution")
+    LLM_MODEL_PHASE2: str = Field(default="openai/gpt-4o-mini", description="Model for passage extraction")
     LLM_TEMPERATURE: float = Field(default=0.1)
     LLM_TIMEOUT: float = Field(default=60.0)
     LLM_MAX_RETRIES: int = Field(default=2)

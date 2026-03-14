@@ -8,12 +8,12 @@ from src.shared.pipeline_definitions import StageOperationResult
 
 class SpeakerNode(BaseModel):
     """Speaker data for Neo4j node creation."""
-    speaker_id: str
-    name: str
-    role: str = ""
-    organization: str = ""
-    industry: str = ""
-    region: str = ""
+    speaker_id: str = Field(..., description="Unique speaker identifier (display name)")
+    name: str = Field(..., description="Display name")
+    role: str = Field(default="", description="Speaker role")
+    organization: str = Field(default="", description="Organization")
+    industry: str = Field(default="", description="Industry")
+    region: str = Field(default="", description="Region")
 
 
 class CommunicationData(BaseModel):
@@ -31,18 +31,18 @@ class CommunicationData(BaseModel):
 
 class EntityInTopic(BaseModel):
     """Entity discussed within a topic context, with its claims."""
-    entity_name: str
-    entity_type: str
-    claims: List[Dict[str, Any]]
+    entity_name: str = Field(..., description="Canonical entity name")
+    entity_type: str = Field(..., description="Entity type")
+    claims: List[Dict[str, Any]] = Field(..., description="Claims made about this entity")
 
 
 class TopicGroup(BaseModel):
     """A topic category discussed in a communication, grouping multiple entities."""
     topic_id: str = Field(..., description="Unique ID: {comm_id}__{speaker}__{topic}")
-    topic: str
-    speaker: str
-    topic_summary: str
-    entities: List[EntityInTopic]
+    topic: str = Field(..., description="Topic category")
+    speaker: str = Field(..., description="Speaker display name")
+    topic_summary: str = Field(..., description="LLM-generated synthesis across all entities in this topic")
+    entities: List[EntityInTopic] = Field(..., description="Entities discussed under this topic")
 
 
 class AssembledGraphData(BaseModel):
@@ -55,8 +55,8 @@ class AssembledGraphData(BaseModel):
 
 class GraphLoadStats(BaseModel):
     """Graph loading statistics (nodes and relationships created in Neo4j)."""
-    nodes_created: int = Field(default=0, description="Number of nodes created in Neo4j")
-    relationships_created: int = Field(default=0, description="Number of relationships created in Neo4j")
+    nodes_created: int = Field(default=0, description="Number of nodes created")
+    relationships_created: int = Field(default=0, description="Number of relationships created")
 
 
 class GraphResult(StageOperationResult[GraphLoadStats]):
@@ -66,9 +66,9 @@ class GraphResult(StageOperationResult[GraphLoadStats]):
 
 class GraphContext(BaseModel):
     """Processing context for graph loading operation."""
-    id: str = Field(..., description="Unique identifier for the item")
+    id: str = Field(..., description="Communication ID")
     stage_outputs: Dict[str, Any] = Field(default_factory=dict, description="Per-stage metadata with file paths")
     matched_speakers: List[str] = Field(default_factory=list, description="Matched speakers (display names)")
-    title: Optional[str] = Field(None, description="Article title")
-    publication_date: Optional[str] = Field(None, description="Publication date (YYYY-MM-DD)")
-    source_url: Optional[str] = Field(None, description="Article URL")
+    title: Optional[str] = Field(default=None, description="Article title")
+    publication_date: Optional[str] = Field(default=None, description="Publication date (YYYY-MM-DD)")
+    source_url: Optional[str] = Field(default=None, description="Source URL")

@@ -9,7 +9,7 @@ from typing import List, Type
 from src.categorize.config import categorization_config
 from src.categorize.models import (
     Claim, EntityMention, EntityType, SentimentLevel, TopicCategory,
-    CategorizationOutput, CategorizationOutputLLM, CategorizationResult, CategorizeContext, CategorizeStageMetadata,
+    CategorizationOutput, CategorizationOutputLLM, CategorizationResult, CategorizeContext, CategorizeStageMetadata, TopicSummary,
 )
 from src.categorize.prompts import SYSTEM_PROMPT, USER_PROMPT
 from src.shared.llm import create_client, extract_usage
@@ -81,18 +81,21 @@ class Categorizer:
 
     def _resolve(self, llm_result: CategorizationOutputLLM, passages: List) -> CategorizationOutput:
         verbatims = [p["verbatim"] for p in passages]
-        return CategorizationOutput(entities=[
-            EntityMention(
-                entity_name=e.entity_name, entity_type=e.entity_type,
-                claims=[
-                    Claim(
-                        speaker=c.speaker, topic=c.topic, claim_label=c.claim_label,
-                        sentiment=c.sentiment, summary=c.summary,
-                        passages=self._dedupe([verbatims[i] for i in c.passage_indices]),
-                    ) for c in e.claims
-                ]
-            ) for e in llm_result.entities
-        ])
+        return CategorizationOutput(
+            topics=llm_result.topics,
+            entities=[
+                EntityMention(
+                    entity_name=e.entity_name, entity_type=e.entity_type,
+                    claims=[
+                        Claim(
+                            speaker=c.speaker, topic=c.topic, claim_label=c.claim_label,
+                            sentiment=c.sentiment, summary=c.summary,
+                            passages=self._dedupe([verbatims[i] for i in c.passage_indices]),
+                        ) for c in e.claims
+                    ]
+                ) for e in llm_result.entities
+            ],
+        )
 
     @staticmethod
     def _dedupe(passages: List[str], threshold: float = 0.9) -> List[str]:

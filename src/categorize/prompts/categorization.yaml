@@ -30,10 +30,18 @@ system_prompt: |
   4. Sentiment reflects the specific speaker's view only
   5. Cover ALL passages — assign each passage index to at least one claim
   6. Each entity_name must appear EXACTLY ONCE in the output — one entry per entity group, never split the same entity across multiple entries
+  7. topic_summaries: one entry per unique (speaker, topic) pair observed across all claims — synthesize what the speaker says about ALL entities in that topic
 
   ---
   OUTPUT FORMAT:
   {{
+    "topics": [
+      {{
+        "topic": "from topic categories above",
+        "speaker": "exact display name from tracked speakers above",
+        "summary": "synthesis of what the speaker says about all entities in this topic"
+      }}
+    ],
     "entities": [
       {{
         "entity_name": "canonical name",
@@ -75,3 +83,4 @@ user_prompt: |
   4. Write summaries in news style — weave in the speaker's verbatim quotes where they add impact
   5. Assign sentiment at the claim level based on the tracked speaker's tone
   6. Group related passages into the same claim when they support the same point
+  7. After processing all entities, write one topic_summary per unique (speaker, topic) pair — synthesize what the speaker says across all entities in that topic

@@ -138,32 +138,42 @@ class CategorizeContext(BaseModel):
     categorization_input: CategorizationInput = Field(..., description="Categorization input data")
 
 
+class TopicSummary(BaseModel):
+    """LLM-generated synthesis of what a speaker says about all entities within a topic."""
+    model_config = ConfigDict(use_enum_values=True)
+    topic: TopicCategory = Field(...)
+    speaker: str = Field(...)
+    summary: str = Field(...)
+
+
+def _validate_unique_entities(entities: list) -> list:
+    names = [e.entity_name.lower() for e in entities]
+    if len(names) != len(set(names)):
+        duplicates = {n for n in names if names.count(n) > 1}
+        raise ValueError(f"Duplicate entity names: {duplicates}")
+    return entities
+
+
 class CategorizationOutputLLM(BaseModel):
     """LLM structured output."""
+    topics: List[TopicSummary] = Field(...)
     entities: List[EntityMentionLLM] = Field(...)
 
     @field_validator('entities')
     @classmethod
-    def unique_entities(cls, entities: List[EntityMentionLLM]) -> List[EntityMentionLLM]:
-        names = [e.entity_name.lower() for e in entities]
-        if len(names) != len(set(names)):
-            duplicates = {n for n in names if names.count(n) > 1}
-            raise ValueError(f"Duplicate entity names: {duplicates}")
-        return entities
+    def unique_entities(cls, v: List[EntityMentionLLM]) -> List[EntityMentionLLM]:
+        return _validate_unique_entities(v)
 
 
 class CategorizationOutput(BaseModel):
     """Saved output with resolved passages."""
+    topics: List[TopicSummary] = Field(default_factory=list)
     entities: List[EntityMention] = Field(...)
 
     @field_validator('entities')
     @classmethod
-    def unique_entities(cls, entities: List[EntityMention]) -> List[EntityMention]:
-        names = [e.entity_name.lower() for e in entities]
-        if len(names) != len(set(names)):
-            duplicates = {n for n in names if names.count(n) > 1}
-            raise ValueError(f"Duplicate entity names: {duplicates}")
-        return entities
+    def unique_entities(cls, v: List[EntityMention]) -> List[EntityMention]:
+        return _validate_unique_entities(v)
 
 
 class CategorizeStageMetadata(BaseModel):
